@@ -1,0 +1,21 @@
+---
+description: Commit and push code updates to the GitHub repo
+alwaysApply: true
+---
+
+# Push updates to GitHub
+
+After you change project code for the user, commit those changes and push them to `https://github.com/NeverSMILE0825/DexTools-Extension.git` on `main`.
+
+- This standing request is permission to commit and push after a completed code change.
+- Do not commit or push when the user only asked a question, or when there is nothing to commit.
+- Do not commit secrets (`.env`, credentials, tokens).
+- Do not update git config, skip hooks, or force-push.
+- Use the existing remote `origin`. If it is missing, add `https://github.com/NeverSMILE0825/DexTools-Extension.git`.
+- Stage only the files that belong to the change, then push with `git push -u origin HEAD`.
+
+```powershell
+git add page.js content.css
+git commit -m "Show the current gas price beside pooled ETH."
+git push -u origin HEAD
+```

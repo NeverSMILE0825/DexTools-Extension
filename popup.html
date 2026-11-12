@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Team Wallet Labels</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon128.png" alt="" />
+      <div>
+        <h1>Team Wallet Labels</h1>
+        <p>For DEXTools pair explorer pages</p>
+      </div>
+    </header>
+    <p id="status" class="status">Open a DEXTools pair page.</p>
+    <div class="layout">
+      <section class="card form-card">
+        <div class="field-label">
+          <span>Label name</span>
+          <span class="hint">e.g. ETH, GTA</span>
+        </div>
+        <input id="labelName" type="text" placeholder="ETH" autocomplete="off" spellcheck="false" />
+        <div class="field-label split">
+          <span>Team wallet addresses</span>
+          <span id="addressCount">0 addresses</span>
+        </div>
+        <textarea
+          id="addresses"
+          spellcheck="false"
+          placeholder="0x..."
+          aria-label="Team wallet addresses"
+        ></textarea>
+        <p class="help">
+          Paste one full 0x Ethereum address per line. Commas and spaces also work. Each save adds that
+          label and keeps the others. Label names can include spaces and any other characters. There is
+          no limit on length or on how many labels you save. Unlabeled is the net Total ETH of trades
+          that are not that label. Buys are added and sells are subtracted.
+        </p>
+        <p id="formMessage" class="form-message"></p>
+        <div class="actions">
+          <button id="save" class="save" type="button">Save team wallet list</button>
+          <button id="clear" class="clear" type="button">Clear</button>
+        </div>
+      </section>
+      <section class="card saved-card">
+        <h2>Saved labels</h2>
+        <label class="show-sum" for="showSum">
+          <input id="showSum" type="checkbox" />
+          <span>Show unlabeled total on the pair page</span>
+        </label>
+        <p id="savedSummary" class="summary">0 labels · 0 wallets</p>
+        <div id="savedList" class="saved-list"></div>
+      </section>
+    </div>
+    <footer>Local only · No wallet connection · No trading access</footer>
+    <script src="popup.js"></script>
+  </body>
+</html>
