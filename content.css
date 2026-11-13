@@ -59,10 +59,11 @@ span.only-address.twl-labeled {
 .twl-trades {
   position: fixed;
   z-index: 2147483000;
-  top: 64px;
-  left: 12px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: min(980px, calc(100vw - 24px));
-  max-height: min(70vh, calc(100vh - 180px));
+  max-height: min(70vh, calc(100vh - 48px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -123,7 +124,7 @@ span.only-address.twl-labeled {
 .twl-trades-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: calc(min(70vh, 100vh - 180px) - 48px);
+  max-height: calc(min(70vh, 100vh - 48px) - 48px);
   overflow: auto;
 }
 
@@ -173,14 +174,12 @@ span.only-address.twl-labeled {
 
 @media (max-width: 1100px) {
   .twl-trades {
-    top: 8px;
-    left: 8px;
     width: calc(100vw - 16px);
-    max-height: min(62vh, calc(100vh - 200px));
+    max-height: min(78vh, calc(100vh - 24px));
   }
 
   .twl-trades-scroll {
-    max-height: calc(min(62vh, 100vh - 200px) - 48px);
+    max-height: calc(min(78vh, 100vh - 24px) - 48px);
   }
 }
 
