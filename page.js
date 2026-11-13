@@ -735,23 +735,36 @@
     }
     const headers = readTradeHeaders();
     const rows = unlabeledTrades();
-    const visible = rows.slice(0, 400);
     if (!table) {
       table = document.createElement("section");
       table.id = "twl-trades";
       table.className = "twl-trades";
       root.appendChild(table);
     }
+    const previousScroll = table.querySelector(".twl-trades-scroll");
+    const scrollTop = previousScroll ? previousScroll.scrollTop : 0;
     table.textContent = "";
     const head = document.createElement("div");
     head.className = "twl-trades-head";
     const title = document.createElement("div");
     title.className = "twl-trades-title";
     title.textContent = "Unlabeled trades";
+    const tools = document.createElement("div");
+    tools.className = "twl-trades-tools";
+    const hideTrades = document.createElement("button");
+    hideTrades.type = "button";
+    hideTrades.className = "twl-trades-hide";
+    hideTrades.textContent = "Hide trades";
+    hideTrades.addEventListener("click", () => {
+      showTable = false;
+      window.postMessage({ source: "twl-page", type: "show-table", showTable: false }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
     const count = document.createElement("div");
     count.className = "twl-trades-count";
     count.textContent = rows.length + (rows.length === 1 ? " trade" : " trades") + (complete ? "" : " · counting");
-    head.append(title, count);
+    tools.append(hideTrades, count);
+    head.append(title, tools);
     table.appendChild(head);
     const scroller = document.createElement("div");
     scroller.className = "twl-trades-scroll";
@@ -765,7 +778,7 @@
     }
     thead.appendChild(headRow);
     const body = document.createElement("tbody");
-    for (const trade of visible) {
+    for (const trade of rows) {
       const row = document.createElement("tr");
       row.className = trade.type === "sell" ? "sell" : "buy";
       for (const header of headers) {
@@ -790,12 +803,7 @@
     grid.append(thead, body);
     scroller.appendChild(grid);
     table.appendChild(scroller);
-    if (rows.length > visible.length) {
-      const more = document.createElement("div");
-      more.className = "twl-trades-more";
-      more.textContent = "Showing the newest " + visible.length + " of " + rows.length + " unlabeled trades.";
-      table.appendChild(more);
-    }
+    scroller.scrollTop = scrollTop;
   }
 
   function poolStat(label, value) {

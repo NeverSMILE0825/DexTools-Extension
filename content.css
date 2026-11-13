@@ -62,9 +62,10 @@ span.only-address.twl-labeled {
   top: 64px;
   left: 12px;
   width: min(980px, calc(100vw - 24px));
-  max-height: calc(100vh - 150px);
+  max-height: min(70vh, calc(100vh - 180px));
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   box-sizing: border-box;
   border: 1px solid #24302b;
   border-radius: 12px;
@@ -90,15 +91,40 @@ span.only-address.twl-labeled {
   text-transform: uppercase;
 }
 
+.twl-trades-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.twl-trades-hide {
+  border: 1px solid #ff6b78;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #1c0d10;
+  color: #ffb3ba;
+  font: 700 12px "Segoe UI", Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.twl-trades-hide:hover {
+  background: #ff6b78;
+  color: #1c0d06;
+}
+
 .twl-trades-count {
   color: #d7e4dd;
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .twl-trades-scroll {
-  overflow: auto;
+  flex: 1 1 auto;
   min-height: 0;
+  max-height: calc(min(70vh, 100vh - 180px) - 48px);
+  overflow: auto;
 }
 
 .twl-trades table {
@@ -150,7 +176,11 @@ span.only-address.twl-labeled {
     top: 8px;
     left: 8px;
     width: calc(100vw - 16px);
-    max-height: calc(100vh - 180px);
+    max-height: min(62vh, calc(100vh - 200px));
+  }
+
+  .twl-trades-scroll {
+    max-height: calc(min(62vh, 100vh - 200px) - 48px);
   }
 }
 
