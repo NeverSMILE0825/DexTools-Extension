@@ -3,8 +3,11 @@
   "name": "Team Wallet Labels",
   "version": "1.0.0",
   "description": "Replace DEXTools maker addresses with labels from your team wallet list.",
-  "permissions": ["storage", "unlimitedStorage", "activeTab"],
+  "permissions": ["storage", "unlimitedStorage", "activeTab", "notifications"],
   "host_permissions": ["*://*.dextools.io/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Team Wallet Labels",
     "default_popup": "popup.html",

@@ -91,7 +91,28 @@
       return false;
     }
     trades.set(key, next);
+    if (!prev) notifyUnlabeled(next);
     return true;
+  }
+
+  function armNotifications() {
+    notifyReady = indexComplete && labelsReady;
+  }
+
+  function notifyUnlabeled(trade) {
+    if (!notifyReady || !addressToLabel.size || addressToLabel.has(trade.maker)) return;
+    window.postMessage(
+      {
+        source: "twl-page",
+        type: "unlabeled-trade",
+        id: trade.id,
+        tradeType: trade.type,
+        time: formatTradeDate(trade.timestamp) || "Just now",
+        amount: formatAmount(trade.amount),
+        maker: trade.maker
+      },
+      "*"
+    );
   }
 
   function collect(value, found, depth, seen) {
@@ -336,6 +357,8 @@
   let indexedKey = "";
   let indexToken = 0;
   let indexComplete = false;
+  let notifyReady = false;
+  let labelsReady = false;
   let statsTimer = 0;
 
   function queueStats() {
@@ -952,6 +975,7 @@
     trades.clear();
     indexedKey = key;
     indexComplete = false;
+    notifyReady = false;
     if (pooledFor !== key) {
       pooledEth = null;
       pooledFor = "";
@@ -974,7 +998,7 @@
     const step = () => {
       if (token !== indexToken) return;
       if (pages >= 250) {
-        indexComplete = true;
+        markIndexComplete();
         publishStats(info);
         schedule();
         return;
@@ -1008,14 +1032,14 @@
           const next = data && data.data && data.data.next;
           pages += 1;
           if (!events || !events.length || !next || next.blockNumber == null || next.logIndex == null) {
-            indexComplete = true;
+            markIndexComplete();
             publishStats(info);
             schedule();
             return;
           }
           const mark = next.blockNumber + ":" + next.logIndex + ":" + next.date;
           if (seen.has(mark)) {
-            indexComplete = true;
+            markIndexComplete();
             publishStats(info);
             schedule();
             return;
@@ -1093,6 +1117,13 @@
     }
     schedule();
     queueStats();
+    labelsReady = true;
+    armNotifications();
+  }
+
+  function markIndexComplete() {
+    indexComplete = true;
+    armNotifications();
   }
 
   function filteredMaker() {

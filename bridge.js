@@ -156,6 +156,22 @@ window.addEventListener("message", (event) => {
     chrome.storage.local.set({ twlShowTable: Boolean(data.showTable) });
     return;
   }
+  if (data.type === "unlabeled-trade" && typeof data.id === "string") {
+    chrome.runtime.sendMessage(
+      {
+        type: "unlabeled-trade",
+        id: data.id,
+        tradeType: data.tradeType === "sell" ? "sell" : "buy",
+        time: typeof data.time === "string" ? data.time : "",
+        amount: typeof data.amount === "string" ? data.amount : "",
+        maker: typeof data.maker === "string" ? data.maker : ""
+      },
+      () => {
+        void chrome.runtime.lastError;
+      }
+    );
+    return;
+  }
   if (data.type === "quote" && typeof data.key === "string") {
     const next = rememberQuote(data);
     chrome.storage.local.set({ twlQuote: next });
