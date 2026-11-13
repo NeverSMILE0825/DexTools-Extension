@@ -14,6 +14,7 @@ let labels = [];
 let editingId = null;
 let stats = null;
 let activePair = "";
+let activeUrl = "";
 
 function hasExtensionStorage() {
   return Boolean(globalThis.chrome && chrome.storage && chrome.storage.local);
@@ -49,6 +50,33 @@ function plural(count, noun) {
 function pairFromUrl(url) {
   const match = String(url || "").match(/pair-explorer\/(0x[a-fA-F0-9]{40,})/i);
   return match ? match[1].toLowerCase() : "";
+}
+
+function pagePath(url) {
+  try {
+    return new URL(url).pathname;
+  } catch (error) {
+    return "";
+  }
+}
+
+function isTokenPage(url) {
+  return /dextools\.io\/app\/(?:[^/]+\/)?token\//i.test(String(url || ""));
+}
+
+function resolveActivePair() {
+  const fromUrl = pairFromUrl(activeUrl);
+  if (fromUrl) return fromUrl;
+  const path = pagePath(activeUrl);
+  if (isTokenPage(activeUrl) && stats && stats.page === path && stats.pair) return String(stats.pair).toLowerCase();
+  return "";
+}
+
+function applyActivePair() {
+  const nextPair = resolveActivePair();
+  if (nextPair === activePair) return false;
+  activePair = nextPair;
+  return true;
 }
 
 function tradeCount(name) {
@@ -295,24 +323,20 @@ async function refreshStatus() {
   try {
     if (!globalThis.chrome || !chrome.tabs || !chrome.tabs.query) return;
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const url = tabs[0] && tabs[0].url ? tabs[0].url : "";
-    const nextPair = pairFromUrl(url);
-    if (nextPair !== activePair) {
-      activePair = nextPair;
-      renderSaved();
-    }
-    if (/dextools\.io\/app\/[^/]+\/pair-explorer\//i.test(url)) {
-      statusLine.textContent = "Watching this DEXTools pair page.";
+    activeUrl = tabs[0] && tabs[0].url ? tabs[0].url : "";
+    if (applyActivePair()) renderSaved();
+    if (/dextools\.io\/app\/[^/]+\/pair-explorer\//i.test(activeUrl) || isTokenPage(activeUrl)) {
+      statusLine.textContent = "Watching this DEXTools page.";
       statusLine.classList.add("ok");
-    } else if (/dextools\.io/i.test(url)) {
-      statusLine.textContent = "Open a pair explorer page to label makers.";
+    } else if (/dextools\.io/i.test(activeUrl)) {
+      statusLine.textContent = "Open a pair or token page to label makers.";
       statusLine.classList.remove("ok");
     } else {
-      statusLine.textContent = "Open a DEXTools pair page.";
+      statusLine.textContent = "Open a DEXTools pair or token page.";
       statusLine.classList.remove("ok");
     }
   } catch (error) {
-    statusLine.textContent = "Open a DEXTools pair page.";
+    statusLine.textContent = "Open a DEXTools pair or token page.";
   }
 }
 
@@ -347,6 +371,7 @@ if (hasExtensionStorage()) {
 if (hasExtensionStorage()) {
   chrome.storage.local.get({ twlStats: null }, (data) => {
     stats = data.twlStats || null;
+    applyActivePair();
     renderSaved();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -354,6 +379,7 @@ if (hasExtensionStorage()) {
     if (changes.twlShowSum) showSumInput.checked = Boolean(changes.twlShowSum.newValue);
     if (changes.twlStats) {
       stats = changes.twlStats.newValue || null;
+      applyActivePair();
       renderSaved();
     }
   });

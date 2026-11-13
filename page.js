@@ -202,12 +202,79 @@
     window.WebSocket = Wrapped;
   }
 
+  function chainFromExplorer(href) {
+    let host = "";
+    try {
+      host = new URL(href, location.origin).hostname.toLowerCase().replace(/^www\./, "");
+    } catch (error) {
+      return "";
+    }
+    const hosts = {
+      "etherscan.io": "ether",
+      "bscscan.com": "bsc",
+      "polygonscan.com": "polygon",
+      "basescan.org": "base",
+      "arbiscan.io": "arbitrum",
+      "snowtrace.io": "avalanche",
+      "optimistic.etherscan.io": "optimism",
+      "ftmscan.com": "fantom",
+      "cronoscan.com": "cronos",
+      "gnosisscan.io": "gnosis",
+      "lineascan.build": "linea",
+      "scrollscan.com": "scroll",
+      "blastscan.io": "blast",
+      "solscan.io": "solana"
+    };
+    return hosts[host] || "";
+  }
+
+  function chainFromSelector() {
+    const el = document.querySelector(".chain-label");
+    const text = el ? el.textContent.replace(/\s+/g, " ").trim().toLowerCase() : "";
+    const names = {
+      ethereum: "ether",
+      ether: "ether",
+      eth: "ether",
+      bnb: "bsc",
+      "bnb chain": "bsc",
+      binance: "bsc",
+      polygon: "polygon",
+      base: "base",
+      arbitrum: "arbitrum",
+      avalanche: "avalanche",
+      solana: "solana",
+      optimism: "optimism",
+      fantom: "fantom"
+    };
+    return names[text] || "";
+  }
+
+  function pairFromDom() {
+    const blocks = document.querySelectorAll(".info-address");
+    for (const block of blocks) {
+      const symbol = block.querySelector(".symbol");
+      if (!symbol || !/^\s*pair\s*$/i.test(symbol.textContent || "")) continue;
+      const link = block.querySelector("a[href]");
+      if (!link) continue;
+      const href = link.getAttribute("href") || "";
+      const match = href.match(/0x[a-fA-F0-9]{40,}/i);
+      if (!match) continue;
+      const chain = chainFromExplorer(href) || chainFromSelector();
+      if (!chain) continue;
+      return { chain, pair: match[0] };
+    }
+    return null;
+  }
+
   function pairFromLocation() {
     const match = location.pathname.match(/\/app\/([^/]+)\/pair-explorer\/(0x[a-fA-F0-9]{40,})/i);
-    if (!match) return null;
-    const slug = match[1].toLowerCase();
-    const chain = slug === "ethereum" ? "ether" : slug;
-    return { chain, pair: match[2] };
+    if (match) {
+      const slug = match[1].toLowerCase();
+      const chain = slug === "ethereum" ? "ether" : slug;
+      return { chain, pair: match[2] };
+    }
+    if (/\/app\/(?:[^/]+\/)?token\//i.test(location.pathname)) return pairFromDom();
+    return null;
   }
 
   let indexedKey = "";
@@ -474,6 +541,7 @@
         type: "stats",
         pair: info.pair.toLowerCase(),
         chain: info.chain,
+        page: location.pathname,
         matched,
         indexed: txToMaker.size,
         complete: indexComplete,
@@ -788,7 +856,10 @@
     startIndex();
     setTimeout(startIndex, 1500);
     schedule();
-    setInterval(schedule, 700);
+    setInterval(() => {
+      startIndex();
+      schedule();
+    }, 700);
     requestLabels();
     setTimeout(requestLabels, 400);
     setTimeout(requestLabels, 1500);

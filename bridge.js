@@ -59,6 +59,7 @@ window.addEventListener("message", (event) => {
     twlStats: {
       pair: data.pair,
       chain: data.chain || "",
+      page: typeof data.page === "string" ? data.page : "",
       matched: Number(data.matched) || 0,
       indexed: Number(data.indexed) || 0,
       complete: Boolean(data.complete),
