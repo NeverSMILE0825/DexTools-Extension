@@ -12,8 +12,12 @@ function cleanUnlabeled(value) {
     const buyCount = Number.isFinite(buys) ? buys : 0;
     const sellCount = Number.isFinite(sells) ? sells : 0;
     const count = Number(item.count);
+    const buyEth = Number(item.buyEth);
+    const sellEth = Number(item.sellEth);
     out[name] = {
       eth: Number.isFinite(eth) ? eth : 0,
+      buyEth: Number.isFinite(buyEth) ? buyEth : 0,
+      sellEth: Number.isFinite(sellEth) ? sellEth : 0,
       buys: buyCount,
       sells: sellCount,
       count: Number.isFinite(count) ? count : buyCount + sellCount
@@ -30,8 +34,16 @@ function publishLabels() {
 }
 
 function publishSettings() {
-  chrome.storage.local.get({ twlShowSum: false }, (data) => {
-    window.postMessage({ source: EXT_SOURCE, type: "settings", showSum: Boolean(data.twlShowSum) }, "*");
+  chrome.storage.local.get({ twlShowSum: false, twlShowTable: false }, (data) => {
+    window.postMessage(
+      {
+        source: EXT_SOURCE,
+        type: "settings",
+        showSum: Boolean(data.twlShowSum),
+        showTable: Boolean(data.twlShowTable)
+      },
+      "*"
+    );
   });
 }
 
@@ -113,7 +125,7 @@ function rememberQuote(quote) {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.labels) publishLabels();
-  if (changes.twlShowSum) publishSettings();
+  if (changes.twlShowSum || changes.twlShowTable) publishSettings();
   if (changes.twlQuote) {
     rememberQuote(changes.twlQuote.newValue);
     publishQuote(quoteMem);
@@ -138,6 +150,10 @@ window.addEventListener("message", (event) => {
   }
   if (data.type === "hide-sum") {
     chrome.storage.local.set({ twlShowSum: false });
+    return;
+  }
+  if (data.type === "show-table") {
+    chrome.storage.local.set({ twlShowTable: Boolean(data.showTable) });
     return;
   }
   if (data.type === "quote" && typeof data.key === "string") {

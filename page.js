@@ -10,12 +10,16 @@
   let tailIndex = new Map();
   let labelOrder = [];
   let showSum = false;
+  let showTable = false;
   let lastUnlabeled = {};
   let lastComplete = false;
   let pooledEth = null;
   let pooledFor = "";
   let gasGwei = null;
   let gasFor = "";
+  let tokenSupply = null;
+  let supplyFor = "";
+  let tradeHeaders = ["Date", "Type", "MCap", "Price ETH", "Total ETH", "GTA", "Maker", "Others"];
   let localPoolAt = 0;
   let localGasAt = 0;
   let localStatsAt = 0;
@@ -64,8 +68,29 @@
         ? tx + ":" + item.blockNumber + ":" + item.logIndex
         : tx + ":" + item.type + ":" + item.amount;
     const prev = trades.get(key);
-    if (prev && prev.maker === maker && prev.type === item.type && prev.amount === item.amount) return false;
-    trades.set(key, { maker, type: item.type, amount: item.amount });
+    const next = {
+      maker,
+      type: item.type,
+      amount: item.amount,
+      timestamp: item.timestamp || 0,
+      price: item.price,
+      priceETH: item.priceETH,
+      amountUSD: item.amountUSD,
+      amountToken: item.amountToken,
+      id: tx
+    };
+    if (
+      prev &&
+      prev.maker === maker &&
+      prev.type === next.type &&
+      prev.amount === next.amount &&
+      prev.timestamp === next.timestamp &&
+      prev.price === next.price &&
+      prev.amountToken === next.amountToken
+    ) {
+      return false;
+    }
+    trades.set(key, next);
     return true;
   }
 
@@ -83,13 +108,22 @@
       const type = String(value.type || "").toLowerCase();
       const raw = value.amountETH != null ? value.amountETH : value.amountRef;
       const amount = Math.abs(Number(raw));
+      const num = (field) => {
+        const parsed = Number(value[field]);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
       found.push({
         id,
         maker,
         type,
         amount: Number.isFinite(amount) ? amount : null,
         blockNumber: value.blockNumber,
-        logIndex: value.logIndex
+        logIndex: value.logIndex,
+        timestamp: Number(value.timestamp) || 0,
+        price: num("price"),
+        priceETH: num("priceETH"),
+        amountUSD: num("amountUSD"),
+        amountToken: num("amountToken")
       });
     }
     for (const key of Object.keys(value)) {
@@ -404,6 +438,12 @@
           tokenRef === weth;
         const raw = refIsEth ? metrics.reserveRef : sym === "ETH" || sym === "WETH" ? metrics.reserve : null;
         const value = Number(raw);
+        const tokenMetrics = row.token && row.token.metrics;
+        const supply = Number(tokenMetrics && (tokenMetrics.circulatingSupply || tokenMetrics.totalSupply));
+        if (Number.isFinite(supply) && supply > 0) {
+          tokenSupply = supply;
+          supplyFor = key;
+        }
         return Number.isFinite(value) ? value : null;
       })
       .catch(() => null);
@@ -500,20 +540,32 @@
 
   function unlabeledTotals() {
     const labeled = {};
-    for (const name of labelOrder) labeled[name] = { eth: 0, buys: 0, sells: 0 };
+    for (const name of labelOrder) labeled[name] = { eth: 0, buyEth: 0, sellEth: 0, buys: 0, sells: 0 };
     let totalEth = 0;
+    let totalBuyEth = 0;
+    let totalSellEth = 0;
     let totalBuys = 0;
     let totalSells = 0;
     for (const trade of trades.values()) {
       const isSell = trade.type === "sell";
       totalEth += isSell ? -trade.amount : trade.amount;
-      if (isSell) totalSells += 1;
-      else totalBuys += 1;
+      if (isSell) {
+        totalSells += 1;
+        totalSellEth += trade.amount;
+      } else {
+        totalBuys += 1;
+        totalBuyEth += trade.amount;
+      }
       const name = addressToLabel.get(trade.maker);
       if (!name || !Object.prototype.hasOwnProperty.call(labeled, name)) continue;
       labeled[name].eth += isSell ? -trade.amount : trade.amount;
-      if (isSell) labeled[name].sells += 1;
-      else labeled[name].buys += 1;
+      if (isSell) {
+        labeled[name].sells += 1;
+        labeled[name].sellEth += trade.amount;
+      } else {
+        labeled[name].buys += 1;
+        labeled[name].buyEth += trade.amount;
+      }
     }
     const unlabeled = {};
     for (const name of labelOrder) {
@@ -521,12 +573,206 @@
       const sells = totalSells - labeled[name].sells;
       unlabeled[name] = {
         eth: roundEth(totalEth - labeled[name].eth),
+        buyEth: roundEth(totalBuyEth - labeled[name].buyEth),
+        sellEth: roundEth(totalSellEth - labeled[name].sellEth),
         buys,
         sells,
         count: buys + sells
       };
     }
     return unlabeled;
+  }
+
+  function formatAmount(value) {
+    if (!Number.isFinite(value) || value === 0) return "0";
+    const abs = Math.abs(value);
+    const digits = abs < 0.000001 ? 10 : abs >= 1 ? 4 : 6;
+    return abs.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function formatTiny(value) {
+    if (!Number.isFinite(value)) return "";
+    const abs = Math.abs(value);
+    if (abs === 0) return "0";
+    if (abs >= 0.0001) return formatAmount(abs);
+    const text = abs.toFixed(18);
+    const zeros = (text.match(/^0\.(0*)/) || [, ""])[1].length;
+    const digits = text.slice(2 + zeros, 2 + zeros + 4).replace(/0+$/, "");
+    const sub = "₀₁₂₃₄₅₆₇₈₉";
+    const mark = String(zeros)
+      .split("")
+      .map((digit) => sub[digit] || digit)
+      .join("");
+    return "0.0" + mark + digits;
+  }
+
+  function formatUsd(value) {
+    if (!Number.isFinite(value)) return "";
+    const abs = Math.abs(value);
+    if (abs >= 1000) {
+      const scaled = abs >= 1e9 ? abs / 1e9 : abs >= 1e6 ? abs / 1e6 : abs / 1e3;
+      const suffix = abs >= 1e9 ? "B" : abs >= 1e6 ? "M" : "K";
+      return "$" + scaled.toFixed(2) + suffix;
+    }
+    if (abs < 0.0001) return "$" + formatTiny(abs);
+    return "$" + formatAmount(abs);
+  }
+
+  function formatTokenAmount(value) {
+    if (!Number.isFinite(value)) return "";
+    const abs = Math.abs(value);
+    const digits = abs >= 1000 ? 2 : abs >= 1 ? 2 : 6;
+    const parts = abs.toFixed(digits).split(".");
+    const whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const fraction = (parts[1] || "").replace(/0+$/, "");
+    return fraction ? whole + "." + fraction : whole;
+  }
+
+  function formatTradeDate(timestamp) {
+    if (!timestamp) return "";
+    const date = new Date(timestamp * 1000);
+    if (Number.isNaN(date.getTime())) return "";
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const pad = (value) => String(value).padStart(2, "0");
+    return (
+      months[date.getMonth()] +
+      " " +
+      date.getDate() +
+      " " +
+      pad(date.getHours()) +
+      ":" +
+      pad(date.getMinutes()) +
+      ":" +
+      pad(date.getSeconds())
+    );
+  }
+
+  function shortAddress(address) {
+    return address.slice(0, 5) + "..." + address.slice(-4);
+  }
+
+  function readTradeHeaders() {
+    const heads = [];
+    const nodes = document.querySelectorAll(".p-datatable-thead th");
+    for (const node of nodes) {
+      const text = node.innerText.replace(/\s+/g, " ").trim();
+      if (text) heads.push(text);
+    }
+    if (heads.length >= 4) tradeHeaders = heads;
+    return tradeHeaders;
+  }
+
+  function tradeCell(header, trade) {
+    const name = header.toLowerCase();
+    if (name === "date") return formatTradeDate(trade.timestamp);
+    if (name === "type") return trade.type === "sell" ? "SELL" : "BUY";
+    if (name === "mcap" || name === "market cap") {
+      return supplyFor === currentPairKey() && tokenSupply && trade.price != null ? formatUsd(trade.price * tokenSupply) : "";
+    }
+    if (name === "price usd") return trade.price != null ? formatUsd(trade.price) : "";
+    if (name === "price eth") return trade.priceETH != null ? formatTiny(trade.priceETH) : "";
+    if (name === "total usd") return trade.amountUSD != null ? formatUsd(trade.amountUSD) : "";
+    if (name === "total eth") return trade.amount != null ? formatAmount(trade.amount) : "";
+    if (name === "maker") return shortAddress(trade.maker);
+    return trade.amountToken != null ? formatTokenAmount(trade.amountToken) : "";
+  }
+
+  function unlabeledTrades() {
+    const rows = [];
+    for (const trade of trades.values()) {
+      if (trade.type !== "buy" && trade.type !== "sell") continue;
+      if (addressToLabel.has(trade.maker)) continue;
+      rows.push(trade);
+    }
+    rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || String(b.id).localeCompare(String(a.id)));
+    return rows;
+  }
+
+  function txLink(id) {
+    const info = pairFromLocation();
+    const chain = info ? info.chain : "ether";
+    const bases = {
+      ether: "https://etherscan.io/tx/",
+      bsc: "https://bscscan.com/tx/",
+      polygon: "https://polygonscan.com/tx/",
+      base: "https://basescan.org/tx/",
+      arbitrum: "https://arbiscan.io/tx/",
+      avalanche: "https://snowtrace.io/tx/",
+      optimism: "https://optimistic.etherscan.io/tx/"
+    };
+    return (bases[chain] || bases.ether) + id;
+  }
+
+  function renderTrades(complete) {
+    const root = document.documentElement;
+    let table = document.getElementById("twl-trades");
+    if (!showSum || !showTable || !labelOrder.length) {
+      if (table) table.remove();
+      return;
+    }
+    const headers = readTradeHeaders();
+    const rows = unlabeledTrades();
+    const visible = rows.slice(0, 400);
+    if (!table) {
+      table = document.createElement("section");
+      table.id = "twl-trades";
+      table.className = "twl-trades";
+      root.appendChild(table);
+    }
+    table.textContent = "";
+    const head = document.createElement("div");
+    head.className = "twl-trades-head";
+    const title = document.createElement("div");
+    title.className = "twl-trades-title";
+    title.textContent = "Unlabeled trades";
+    const count = document.createElement("div");
+    count.className = "twl-trades-count";
+    count.textContent = rows.length + (rows.length === 1 ? " trade" : " trades") + (complete ? "" : " · counting");
+    head.append(title, count);
+    table.appendChild(head);
+    const scroller = document.createElement("div");
+    scroller.className = "twl-trades-scroll";
+    const grid = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const header of headers) {
+      const cell = document.createElement("th");
+      cell.textContent = header;
+      headRow.appendChild(cell);
+    }
+    thead.appendChild(headRow);
+    const body = document.createElement("tbody");
+    for (const trade of visible) {
+      const row = document.createElement("tr");
+      row.className = trade.type === "sell" ? "sell" : "buy";
+      for (const header of headers) {
+        const cell = document.createElement("td");
+        if (header.toLowerCase() === "others" && trade.id) {
+          const link = document.createElement("a");
+          link.href = txLink(trade.id);
+          link.target = "_blank";
+          link.rel = "noreferrer";
+          link.textContent = "Tx";
+          cell.appendChild(link);
+        } else if (header.toLowerCase() === "type") {
+          cell.textContent = tradeCell(header, trade);
+          cell.className = "type";
+        } else {
+          cell.textContent = tradeCell(header, trade);
+        }
+        row.appendChild(cell);
+      }
+      body.appendChild(row);
+    }
+    grid.append(thead, body);
+    scroller.appendChild(grid);
+    table.appendChild(scroller);
+    if (rows.length > visible.length) {
+      const more = document.createElement("div");
+      more.className = "twl-trades-more";
+      more.textContent = "Showing the newest " + visible.length + " of " + rows.length + " unlabeled trades.";
+      table.appendChild(more);
+    }
   }
 
   function poolStat(label, value) {
@@ -554,6 +800,7 @@
     const names = labelOrder.filter((name) => unlabeled[name]);
     if (!showSum || !names.length) {
       if (panel) panel.remove();
+      renderTrades(complete);
       return;
     }
     if (!panel) {
@@ -568,6 +815,16 @@
     const title = document.createElement("div");
     title.className = "twl-sum-title";
     title.textContent = "Unlabeled Total ETH";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "twl-sum-hide";
+    toggle.textContent = showTable ? "Hide trades" : "Show trades";
+    toggle.title = "Show or hide the unlabeled trades table.";
+    toggle.addEventListener("click", () => {
+      showTable = !showTable;
+      window.postMessage({ source: "twl-page", type: "show-table", showTable }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
     const hide = document.createElement("button");
     hide.type = "button";
     hide.className = "twl-sum-hide";
@@ -577,9 +834,14 @@
       showSum = false;
       const current = document.getElementById("twl-unlabeled");
       if (current) current.remove();
+      const tradesPanel = document.getElementById("twl-trades");
+      if (tradesPanel) tradesPanel.remove();
       window.postMessage({ source: "twl-page", type: "hide-sum" }, "*");
     });
-    head.append(title, hide);
+    const actions = document.createElement("div");
+    actions.className = "twl-sum-actions";
+    actions.append(toggle, hide);
+    head.append(title, actions);
     panel.appendChild(head);
     for (const name of names) {
       const item = unlabeled[name];
@@ -601,6 +863,12 @@
         ". Buys add Total ETH. Sells subtract Total ETH.";
       row.append(label, value);
       panel.appendChild(row);
+      const totals = document.createElement("div");
+      totals.className = "twl-sum-counts";
+      const buyEth = typeof item.buyEth === "number" ? item.buyEth : 0;
+      const sellEth = typeof item.sellEth === "number" ? item.sellEth : 0;
+      totals.textContent = "Buy total " + formatAmount(buyEth) + " ETH · Sell total " + formatAmount(sellEth) + " ETH";
+      panel.appendChild(totals);
       const counts = document.createElement("div");
       counts.className = "twl-sum-counts";
       counts.textContent = item.count + " trades · " + item.buys + " buys · " + item.sells + " sells";
@@ -622,6 +890,7 @@
     );
     panel.appendChild(pool);
     placePanel(panel);
+    renderTrades(complete);
   }
 
   function placePanel(panel) {
@@ -634,7 +903,7 @@
         lift = Math.round(window.innerHeight - rect.top) + 10;
       }
     }
-    const width = Math.min(300, Math.max(180, window.innerWidth - margin * 2));
+    const width = Math.min(340, Math.max(220, window.innerWidth - margin * 2));
     panel.style.boxSizing = "border-box";
     panel.style.right = margin + "px";
     panel.style.left = "auto";
@@ -961,6 +1230,7 @@
     if (data.type === "stats-sync") applyRemoteStats(data);
     if (data.type === "settings") {
       showSum = Boolean(data.showSum);
+      if (typeof data.showTable === "boolean") showTable = data.showTable;
       renderPanel(lastUnlabeled, lastComplete);
       if (showSum) refreshPooled();
     }

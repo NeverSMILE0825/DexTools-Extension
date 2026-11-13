@@ -49,6 +49,111 @@ span.only-address.twl-labeled {
   color: #e7f2ec;
 }
 
+.twl-sum-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.twl-trades {
+  position: fixed;
+  z-index: 2147483000;
+  top: 64px;
+  left: 12px;
+  width: min(980px, calc(100vw - 24px));
+  max-height: calc(100vh - 150px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid #24302b;
+  border-radius: 12px;
+  background: rgba(7, 12, 11, 0.96);
+  color: #e7f2ec;
+  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.twl-trades-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 8px;
+}
+
+.twl-trades-title {
+  color: #8b978f;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.twl-trades-count {
+  color: #d7e4dd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.twl-trades-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+
+.twl-trades table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.twl-trades th {
+  position: sticky;
+  top: 0;
+  padding: 6px 8px;
+  background: #101614;
+  color: #8b978f;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.twl-trades td {
+  padding: 5px 8px;
+  border-top: 1px solid #1c2823;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.twl-trades tr.buy td.type {
+  color: #2ee6a6;
+}
+
+.twl-trades tr.sell td.type {
+  color: #ff6b78;
+}
+
+.twl-trades a {
+  color: #8ecfff;
+  text-decoration: none;
+}
+
+.twl-trades-more {
+  padding: 8px 12px 10px;
+  color: #8b978f;
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .twl-trades {
+    top: 8px;
+    left: 8px;
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 180px);
+  }
+}
+
 .twl-sum-row {
   display: flex;
   align-items: baseline;
