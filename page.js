@@ -270,6 +270,24 @@
     return null;
   }
 
+  function pairFromChart() {
+    const frames = document.querySelectorAll("iframe[data-widget-options], iframe[src]");
+    for (const frame of frames) {
+      const raw = (frame.getAttribute("data-widget-options") || "") + " " + (frame.getAttribute("src") || "");
+      let text = raw;
+      try {
+        text = decodeURIComponent(raw);
+      } catch (error) {
+        text = raw;
+      }
+      const match = text.match(/clientId=(0x[a-fA-F0-9]{40,})-([a-z0-9]+)/i);
+      if (!match) continue;
+      const slug = match[2].toLowerCase();
+      return { chain: slug === "ethereum" ? "ether" : slug, pair: match[1] };
+    }
+    return null;
+  }
+
   function pairFromLocation() {
     const match = location.pathname.match(/\/app\/([^/]+)\/pair-explorer\/(0x[a-fA-F0-9]{40,})/i);
     if (match) {
@@ -277,7 +295,7 @@
       const chain = slug === "ethereum" ? "ether" : slug;
       return { chain, pair: match[2] };
     }
-    if (/\/app\/(?:[^/]+\/)?token\//i.test(location.pathname)) return pairFromDom();
+    if (/\/app\/(?:[^/]+\/)?token\//i.test(location.pathname)) return pairFromDom() || pairFromChart();
     return null;
   }
 
@@ -603,6 +621,27 @@
       poolStat("Gas", gas == null ? "…" : formatGwei(gas))
     );
     panel.appendChild(pool);
+    placePanel(panel);
+  }
+
+  function placePanel(panel) {
+    const margin = 10;
+    const footer = document.querySelector(".fixed-footer");
+    let lift = window.innerWidth > 1100 ? 64 : 16;
+    if (footer) {
+      const rect = footer.getBoundingClientRect();
+      if (rect.height > 24 && rect.bottom >= window.innerHeight - 8 && rect.top < window.innerHeight) {
+        lift = Math.round(window.innerHeight - rect.top) + 10;
+      }
+    }
+    const width = Math.min(300, Math.max(180, window.innerWidth - margin * 2));
+    panel.style.boxSizing = "border-box";
+    panel.style.right = margin + "px";
+    panel.style.left = "auto";
+    panel.style.bottom = lift + "px";
+    panel.style.width = width + "px";
+    panel.style.maxHeight = Math.max(120, window.innerHeight - lift - margin) + "px";
+    panel.style.overflow = "auto";
   }
 
   function publishStats(info) {
@@ -944,6 +983,8 @@
     setInterval(() => {
       startIndex();
       schedule();
+      const panel = document.getElementById("twl-unlabeled");
+      if (panel) placePanel(panel);
     }, 700);
     requestLabels();
     setTimeout(requestLabels, 400);
