@@ -16,6 +16,10 @@
   let pooledFor = "";
   let gasGwei = null;
   let gasFor = "";
+  let localPoolAt = 0;
+  let localGasAt = 0;
+  let localStatsAt = 0;
+  let remoteStats = null;
   let scanTimer = 0;
   let scanning = false;
 
@@ -385,21 +389,95 @@
         return Number.isFinite(value) ? value : null;
       })
       .catch(() => null);
-    Promise.all([poolPromise, readGas(info.chain)]).then((result) => {
-      if (currentPairKey() !== key) return;
-      let changed = false;
-      if (result[0] != null && (pooledFor !== key || pooledEth !== result[0])) {
-        pooledEth = result[0];
-        pooledFor = key;
-        changed = true;
-      }
-      if (result[1] != null && (gasFor !== key || gasGwei !== result[1])) {
-        gasGwei = result[1];
-        gasFor = key;
-        changed = true;
-      }
-      if (changed) renderPanel(lastUnlabeled, lastComplete);
+    poolPromise.then((value) => {
+      if (currentPairKey() !== key || value == null) return;
+      const at = Date.now();
+      if (pooledFor === key && pooledEth === value && localPoolAt >= at) return;
+      pooledEth = value;
+      pooledFor = key;
+      localPoolAt = at;
+      renderPanel(lastUnlabeled, lastComplete);
+      window.postMessage(
+        {
+          source: "twl-page",
+          type: "quote",
+          key,
+          pair: info.pair.toLowerCase(),
+          chain: info.chain,
+          pooledEth: value,
+          pooledAt: at
+        },
+        "*"
+      );
     });
+    readGas(info.chain).then((gwei) => {
+      if (currentPairKey() !== key || gwei == null) return;
+      const at = Date.now();
+      gasGwei = gwei;
+      gasFor = key;
+      localGasAt = at;
+      renderPanel(lastUnlabeled, lastComplete);
+      window.postMessage(
+        {
+          source: "twl-page",
+          type: "quote",
+          key,
+          pair: info.pair.toLowerCase(),
+          chain: info.chain,
+          gasGwei: gwei,
+          gasAt: at
+        },
+        "*"
+      );
+    });
+  }
+
+  function statsRank(complete, indexed) {
+    return (complete ? 2 : 0) * 1000000000 + (indexed || 0);
+  }
+
+  function preferredUnlabeled(unlabeled, complete) {
+    const key = currentPairKey();
+    if (!remoteStats || remoteStats.key !== key || !remoteStats.unlabeled) return { unlabeled, complete };
+    const remoteRank = statsRank(remoteStats.complete, remoteStats.indexed);
+    const localRank = statsRank(complete, txToMaker.size);
+    if (remoteRank > localRank || (remoteRank === localRank && remoteStats.statsAt > localStatsAt)) {
+      return { unlabeled: remoteStats.unlabeled, complete: Boolean(remoteStats.complete) };
+    }
+    return { unlabeled, complete };
+  }
+
+  function applyQuote(data) {
+    const key = currentPairKey();
+    if (!data || data.key !== key) return;
+    let changed = false;
+    if (typeof data.pooledEth === "number" && data.pooledAt >= localPoolAt && (pooledFor !== key || pooledEth !== data.pooledEth)) {
+      pooledEth = data.pooledEth;
+      pooledFor = key;
+      localPoolAt = data.pooledAt;
+      changed = true;
+    }
+    if (typeof data.gasGwei === "number" && data.gasAt >= localGasAt && (gasFor !== key || gasGwei !== data.gasGwei)) {
+      gasGwei = data.gasGwei;
+      gasFor = key;
+      localGasAt = data.gasAt;
+      changed = true;
+    }
+    if (changed) renderPanel(lastUnlabeled, lastComplete);
+  }
+
+  function applyRemoteStats(data) {
+    if (!data || typeof data.pair !== "string") return;
+    const key = (data.chain || "") + ":" + data.pair.toLowerCase();
+    if (key !== currentPairKey()) return;
+    remoteStats = {
+      key,
+      unlabeled: data.unlabeled,
+      complete: Boolean(data.complete),
+      indexed: Number(data.indexed) || 0,
+      statsAt: Number(data.statsAt) || 0
+    };
+    renderPanel(lastUnlabeled, lastComplete);
   }
 
   function unlabeledTotals() {
@@ -449,6 +527,9 @@
   function renderPanel(unlabeled, complete) {
     lastUnlabeled = unlabeled;
     lastComplete = complete;
+    const shown = preferredUnlabeled(unlabeled, complete);
+    unlabeled = shown.unlabeled;
+    complete = shown.complete;
     const root = document.documentElement;
     if (!root) return;
     let panel = document.getElementById("twl-unlabeled");
@@ -534,6 +615,7 @@
       byName[name] = (byName[name] || 0) + 1;
     }
     const unlabeled = unlabeledTotals();
+    localStatsAt = Date.now();
     renderPanel(unlabeled, indexComplete);
     window.postMessage(
       {
@@ -545,6 +627,7 @@
         matched,
         indexed: txToMaker.size,
         complete: indexComplete,
+        statsAt: localStatsAt,
         byName,
         unlabeled
       },
@@ -835,6 +918,8 @@
     const data = event.data;
     if (!data || data.source !== "twl") return;
     if (data.type === "labels") setLabels(data.labels);
+    if (data.type === "quote") applyQuote(data);
+    if (data.type === "stats-sync") applyRemoteStats(data);
     if (data.type === "settings") {
       showSum = Boolean(data.showSum);
       renderPanel(lastUnlabeled, lastComplete);
