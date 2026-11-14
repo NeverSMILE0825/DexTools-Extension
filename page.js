@@ -90,17 +90,39 @@
     ) {
       return false;
     }
+    next.feedPair = String(item.feedPair || "").toLowerCase();
+    next.blockNumber = item.blockNumber;
+    next.logIndex = item.logIndex;
     trades.set(key, next);
     if (!prev) notifyUnlabeled(next);
     return true;
   }
 
+  function currentPairAddress() {
+    const info = pairFromLocation();
+    return info ? info.pair.toLowerCase() : "";
+  }
+
   function armNotifications() {
-    notifyReady = indexComplete && labelsReady;
+    const ready = indexComplete && labelsReady && addressToLabel.size > 0;
+    if (ready && !notifyReady) {
+      seenTradeIds.clear();
+      for (const trade of trades.values()) seenTradeIds.add(trade.id + ":" + trade.type);
+    }
+    notifyReady = ready;
   }
 
   function notifyUnlabeled(trade) {
     if (!notifyReady || !addressToLabel.size || addressToLabel.has(trade.maker)) return;
+    const current = currentPairAddress();
+    if (!current || trade.feedPair !== current || trade.id === current) return;
+    if (trade.blockNumber == null || trade.logIndex == null) return;
+    if (!(trade.amount > 0) || !(trade.timestamp > 0)) return;
+    const age = Date.now() - trade.timestamp * 1000;
+    if (age < -90000 || age > 180000) return;
+    const noteKey = trade.id + ":" + trade.type;
+    if (seenTradeIds.has(noteKey)) return;
+    seenTradeIds.add(noteKey);
     window.postMessage(
       {
         source: "twl-page",
@@ -115,11 +137,24 @@
     );
   }
 
-  function collect(value, found, depth, seen) {
+  function declaredPair(value) {
+    const candidates = [value.pair, value.pairAddress, value.poolAddress];
+    if (value.id && typeof value.id === "object") candidates.push(value.id.pair);
+    if (value.pool && typeof value.pool === "object") {
+      candidates.push(value.pool.pair, value.pool.address);
+    }
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && /^0x[a-fA-F0-9]{40,}$/.test(candidate)) return candidate.toLowerCase();
+    }
+    return "";
+  }
+
+  function collect(value, found, depth, seen, inheritedPair) {
     if (!value || typeof value !== "object" || depth > 7 || seen.has(value)) return;
     seen.add(value);
+    const pair = declaredPair(value) || inheritedPair || "";
     if (Array.isArray(value)) {
-      for (const item of value) collect(item, found, depth + 1, seen);
+      for (const item of value) collect(item, found, depth + 1, seen, pair);
       return;
     }
     let maker = value.maker || value.makerAddress || value.wallet;
@@ -144,18 +179,24 @@
         price: num("price"),
         priceETH: num("priceETH"),
         amountUSD: num("amountUSD"),
-        amountToken: num("amountToken")
+        amountToken: num("amountToken"),
+        feedPair: pair
       });
     }
     for (const key of Object.keys(value)) {
       const child = value[key];
-      if (child && typeof child === "object") collect(child, found, depth + 1, seen);
+      if (child && typeof child === "object") collect(child, found, depth + 1, seen, pair);
     }
   }
 
-  function ingestText(text) {
+  function ingestText(text, pairHint) {
     if (!text || typeof text !== "string" || text.length > 4000000) return;
     if (text.indexOf("maker") === -1 && text.indexOf("0x") === -1) return;
+    const current = currentPairAddress();
+    if (!current) return;
+    const hint = String(pairHint || "").toLowerCase();
+    if (hint === "other" || (hint && hint !== current)) return;
+    if (!hint && text.toLowerCase().indexOf(current) === -1) return;
     let data;
     try {
       data = JSON.parse(text);
@@ -163,16 +204,24 @@
       return;
     }
     const found = [];
-    collect(data, found, 0, new Set());
+    collect(data, found, 0, new Set(), hint === current ? current : "");
     let changed = false;
     for (const item of found) {
       if (remember(item.id, item.maker)) changed = true;
-      if (rememberTrade(item)) changed = true;
+      if (item.feedPair === current && rememberTrade(item)) changed = true;
     }
     if (changed) {
       schedule();
       queueStats();
     }
+  }
+
+  function feedPairFromUrl(url) {
+    const match = String(url || "").match(/\/pool\/events\/[^/?#]+\/(0x[a-fA-F0-9]{40,})/i);
+    if (match) return match[1].toLowerCase();
+    const current = currentPairAddress();
+    if (current && String(url || "").toLowerCase().indexOf(current) !== -1) return current;
+    return isTradeFeed(url) ? "other" : "";
   }
 
   function requestUrl(input) {
@@ -201,9 +250,8 @@
       return native.call(this, input, init).then((response) => {
         try {
           const url = requestUrl(input);
-          if (isTradeFeed(url)) {
-            response.clone().text().then(ingestText).catch(() => {});
-          }
+          const hint = feedPairFromUrl(url);
+          if (hint) response.clone().text().then((text) => ingestText(text, hint)).catch(() => {});
         } catch (error) {}
         return response;
       });
@@ -224,14 +272,15 @@
     proto.send = function () {
       this.addEventListener("load", function () {
         try {
-          if (!isTradeFeed(String(this.__twlUrl || ""))) return;
+          const hint = feedPairFromUrl(String(this.__twlUrl || ""));
+          if (!hint) return;
           let text = "";
           try {
             text = this.responseText;
           } catch (error) {
             if (this.response && typeof this.response === "object") text = JSON.stringify(this.response);
           }
-          ingestText(text);
+          ingestText(text, hint);
         } catch (error) {}
       });
       return nativeSend.apply(this, arguments);
@@ -358,6 +407,7 @@
   let indexToken = 0;
   let indexComplete = false;
   let notifyReady = false;
+  const seenTradeIds = new Set();
   let labelsReady = false;
   let statsTimer = 0;
 
@@ -984,6 +1034,7 @@
     indexedKey = key;
     indexComplete = false;
     notifyReady = false;
+    seenTradeIds.clear();
     if (pooledFor !== key) {
       pooledEth = null;
       pooledFor = "";
@@ -1029,7 +1080,7 @@
         })
         .then((text) => {
           if (token !== indexToken) return;
-          ingestText(text);
+          ingestText(text, info.pair);
           let data = null;
           try {
             data = JSON.parse(text);
