@@ -98,13 +98,14 @@ function publishRanks(ranks) {
 }
 
 function publishSettings() {
-  chrome.storage.local.get({ twlShowSum: false, twlShowTable: false }, (data) => {
+  chrome.storage.local.get({ twlShowSum: false, twlShowTable: false, twlShowRanks: true }, (data) => {
     window.postMessage(
       {
         source: EXT_SOURCE,
         type: "settings",
         showSum: Boolean(data.twlShowSum),
-        showTable: Boolean(data.twlShowTable)
+        showTable: Boolean(data.twlShowTable),
+        showRanks: Boolean(data.twlShowRanks)
       },
       "*"
     );
@@ -196,7 +197,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (incoming && (!ranksMem || incoming.at >= ranksMem.at)) ranksMem = incoming;
     publishRanks(ranksMem);
   }
-  if (changes.twlShowSum || changes.twlShowTable) publishSettings();
+  if (changes.twlShowSum || changes.twlShowTable || changes.twlShowRanks) publishSettings();
   if (changes.twlQuote) {
     rememberQuote(changes.twlQuote.newValue);
     publishQuote(quoteMem);
@@ -234,6 +235,10 @@ window.addEventListener("message", (event) => {
   }
   if (data.type === "show-table") {
     chrome.storage.local.set({ twlShowTable: Boolean(data.showTable) });
+    return;
+  }
+  if (data.type === "show-ranks") {
+    chrome.storage.local.set({ twlShowRanks: Boolean(data.showRanks) });
     return;
   }
   if (data.type === "unlabeled-trade" && typeof data.id === "string") {

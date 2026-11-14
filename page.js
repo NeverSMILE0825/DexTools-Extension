@@ -11,6 +11,7 @@
   let labelOrder = [];
   let showSum = false;
   let showTable = false;
+  let showRanks = true;
   let lastUnlabeled = {};
   let lastComplete = false;
   let pooledEth = null;
@@ -1064,9 +1065,16 @@
       .catch(() => null);
   }
 
+  function setShowRanks(next) {
+    showRanks = Boolean(next);
+    window.postMessage({ source: "twl-page", type: "show-ranks", showRanks }, "*");
+    renderPanel(lastUnlabeled, lastComplete);
+    if (showRanks) refreshRanks();
+  }
+
   function refreshRanks() {
     const token = tokenProfile;
-    if (!token) return;
+    if (!showRanks || !token) return;
     const key = tokenKey(token);
     const trend = token.trend;
     const trendMissing =
@@ -1218,12 +1226,31 @@
 
   function appendRanks(panel) {
     if (!tokenProfile) return;
-    const ranks = shownRanks();
     const block = document.createElement("div");
     block.className = "twl-ranks";
+    if (!showRanks) {
+      const show = document.createElement("button");
+      show.type = "button";
+      show.className = "twl-sum-hide";
+      show.textContent = "Show ranks";
+      show.title = "Show Hot Pairs, Trending, Nitro, and Updates rank.";
+      show.addEventListener("click", () => setShowRanks(true));
+      block.appendChild(show);
+      panel.appendChild(block);
+      return;
+    }
+    const ranks = shownRanks();
     const head = document.createElement("div");
     head.className = "twl-rank-head";
-    head.textContent = tokenProfile.ticker.trim() || tokenProfile.name;
+    const title = document.createElement("span");
+    title.textContent = tokenProfile.ticker.trim() || tokenProfile.name;
+    const hide = document.createElement("button");
+    hide.type = "button";
+    hide.className = "twl-sum-hide";
+    hide.textContent = "Hide";
+    hide.title = "Hide ranks. Turn them back on here or from the extension popup.";
+    hide.addEventListener("click", () => setShowRanks(false));
+    head.append(title, hide);
     block.appendChild(head);
     const trend = tokenProfile.trend || "24h";
     const trendRank = ranks && ranks.trendRanks ? ranks.trendRanks[trend] : null;
@@ -1595,6 +1622,11 @@
     if (data.type === "settings") {
       showSum = Boolean(data.showSum);
       if (typeof data.showTable === "boolean") showTable = data.showTable;
+      if (typeof data.showRanks === "boolean") {
+        const turnedOn = data.showRanks && !showRanks;
+        showRanks = data.showRanks;
+        if (turnedOn) refreshRanks();
+      }
       renderPanel(lastUnlabeled, lastComplete);
       if (showSum) refreshPooled();
     }

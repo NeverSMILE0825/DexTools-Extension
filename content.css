@@ -279,6 +279,10 @@ span.only-address.twl-labeled {
 }
 
 .twl-rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: #ff7a33;
   font-size: 12px;
   font-weight: 800;

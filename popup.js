@@ -21,6 +21,7 @@ const formMessage = document.getElementById("formMessage");
 const savedList = document.getElementById("savedList");
 const savedSummary = document.getElementById("savedSummary");
 const showSumInput = document.getElementById("showSum");
+const showRanksInput = document.getElementById("showRanks");
 const statusLine = document.getElementById("status");
 
 let labels = [];
@@ -447,6 +448,11 @@ showSumInput.addEventListener("change", () => {
   if (hasExtensionStorage()) chrome.storage.local.set({ twlShowSum: showSum });
   else localStorage.setItem("twl-show-sum", showSum ? "1" : "0");
 });
+showRanksInput.addEventListener("change", () => {
+  const showRanks = showRanksInput.checked;
+  if (hasExtensionStorage()) chrome.storage.local.set({ twlShowRanks: showRanks });
+  else localStorage.setItem("twl-show-ranks", showRanks ? "1" : "0");
+});
 addressesInput.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") saveForm();
 });
@@ -467,11 +473,13 @@ if (hasExtensionStorage()) {
   }
 }
 if (hasExtensionStorage()) {
-  chrome.storage.local.get({ twlShowSum: false }, (data) => {
+  chrome.storage.local.get({ twlShowSum: false, twlShowRanks: true }, (data) => {
     showSumInput.checked = Boolean(data.twlShowSum);
+    showRanksInput.checked = Boolean(data.twlShowRanks);
   });
 } else {
   showSumInput.checked = localStorage.getItem("twl-show-sum") === "1";
+  showRanksInput.checked = localStorage.getItem("twl-show-ranks") !== "0";
 }
 if (hasExtensionStorage()) {
   chrome.storage.local.get({ twlStats: null }, (data) => {
@@ -482,6 +490,7 @@ if (hasExtensionStorage()) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.twlShowSum) showSumInput.checked = Boolean(changes.twlShowSum.newValue);
+    if (changes.twlShowRanks) showRanksInput.checked = Boolean(changes.twlShowRanks.newValue);
     if (changes.twlStats) {
       stats = changes.twlStats.newValue || null;
       applyActivePair();
