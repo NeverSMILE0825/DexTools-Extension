@@ -26,6 +26,9 @@
   let remoteStats = null;
   let scanTimer = 0;
   let scanning = false;
+  let tokenProfile = null;
+  let rankState = null;
+  let rankFetch = 0;
 
   function isAddr(value) {
     return typeof value === "string" && ADDR.test(value);
@@ -970,8 +973,277 @@
       poolStat("Gas", gas == null ? "…" : formatGwei(gas))
     );
     panel.appendChild(pool);
+    appendRanks(panel);
     placePanel(panel);
     renderTrades(complete);
+  }
+
+  function tokenKey(token) {
+    return [token.chain, token.name, token.ticker, token.ca, token.pair, token.base].join("|");
+  }
+
+  function normSymbol(value) {
+    return String(value || "").trim().toLowerCase().replace(/^\$+/, "");
+  }
+
+  function sameChain(rowChain, tokenChain) {
+    const aliases = { ethereum: "ether", eth: "ether", binance: "bsc" };
+    const left = aliases[String(rowChain || "").toLowerCase()] || String(rowChain || "").toLowerCase();
+    const right = aliases[String(tokenChain || "").toLowerCase()] || String(tokenChain || "").toLowerCase();
+    if (!left || !right) return true;
+    return left === right;
+  }
+
+  function baseMatches(sideSymbol, sideAddress, base) {
+    const wanted = String(base || "").trim().toLowerCase();
+    if (!wanted) return true;
+    const symbol = String(sideSymbol || "").toLowerCase();
+    const address = String(sideAddress || "").toLowerCase();
+    if (symbol === wanted || address === wanted) return true;
+    if ((wanted === "eth" || wanted === "weth") && (symbol === "eth" || symbol === "weth")) return true;
+    if ((wanted === "btc" || wanted === "wbtc") && (symbol === "btc" || symbol === "wbtc")) return true;
+    return false;
+  }
+
+  function rowIdentity(row) {
+    const main = row && row.mainToken && typeof row.mainToken === "object" ? row.mainToken : {};
+    const side = row && row.sideToken && typeof row.sideToken === "object" ? row.sideToken : {};
+    return {
+      symbol: main.symbol || row.symbol || "",
+      name: main.name || row.name || "",
+      ca: String(main.address || row.id || ""),
+      pair: String(row.address || ""),
+      sideSymbol: side.symbol || "",
+      sideAddress: side.address || "",
+      chain: row.chain || ""
+    };
+  }
+
+  function tokenMatches(row, token) {
+    if (!token) return false;
+    const id = rowIdentity(row);
+    if (!sameChain(id.chain, token.chain)) return false;
+    if (token.pair && id.pair && id.pair.toLowerCase() === token.pair) return true;
+    if (token.ca && id.ca && id.ca.toLowerCase() === token.ca) {
+      if (token.base && (id.sideSymbol || id.sideAddress) && !baseMatches(id.sideSymbol, id.sideAddress, token.base)) return false;
+      return true;
+    }
+    if (token.pair || token.ca) return false;
+    if (normSymbol(id.symbol) !== normSymbol(token.ticker)) return false;
+    if (String(id.name).trim().toLowerCase() !== String(token.name).trim().toLowerCase()) return false;
+    if (token.base && (id.sideSymbol || id.sideAddress) && !baseMatches(id.sideSymbol, id.sideAddress, token.base)) return false;
+    return true;
+  }
+
+  function rankIn(rows, token) {
+    const seen = new Set();
+    let rank = 0;
+    for (const row of rows) {
+      const id = rowIdentity(row);
+      const key = id.pair.toLowerCase() + "|" + id.ca.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rank += 1;
+      if (tokenMatches(row, token)) return rank;
+    }
+    return null;
+  }
+
+  function nextDir(previousRank, previousDir, rank) {
+    if (rank == null) return "";
+    if (typeof previousRank !== "number") return "";
+    if (rank < previousRank) return "up";
+    if (rank > previousRank) return "down";
+    return previousDir === "up" || previousDir === "down" ? previousDir : "";
+  }
+
+  function apiGet(url, version) {
+    const fetchImpl = nativeFetch || window.fetch;
+    return fetchImpl(url, { headers: { Accept: "application/json", "X-API-Version": version } })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+  }
+
+  function refreshRanks() {
+    const token = tokenProfile;
+    if (!token) return;
+    const key = tokenKey(token);
+    const trend = token.trend;
+    const trendMissing =
+      rankState &&
+      rankState.tokenKey === key &&
+      rankState.trend === trend &&
+      rankState.trendRanks &&
+      rankState.trendRanks[trend] == null;
+    if (rankState && rankState.tokenKey === key && rankState.trend === trend && Date.now() - rankState.at < (trendMissing ? 45000 : 12000)) return;
+    const ticket = ++rankFetch;
+    const chain = encodeURIComponent(token.chain);
+    const hotUrl = "https://www.dextools.io/api/core/pool/listing/hotpairs?chain=" + chain + "&mode=full";
+    const nitroUrl = "https://www.dextools.io/api/core/pool/listing/token-race?lite=false";
+    const socialUrl = "https://www.dextools.io/api/core/token/listings/social-network-updates/list?limit=100&chain=" + chain;
+    const trendingUrl = (page) =>
+      "https://www.dextools.io/api/core/pool/listing/dashboard?chains=" +
+      chain +
+      "&page=" +
+      page +
+      "&pageSize=50&sortBy=trending" +
+      trend +
+      "&sortOrder=desc";
+    Promise.all([apiGet(hotUrl, "2"), apiGet(nitroUrl, "2"), apiGet(socialUrl, "1"), collectTrending(trendingUrl, token)]).then((parts) => {
+      if (ticket !== rankFetch || !tokenProfile || tokenKey(tokenProfile) !== key || tokenProfile.trend !== trend) return;
+      const hotRows = parts[0] && Array.isArray(parts[0].data) ? parts[0].data : [];
+      const nitroRows = parts[1] && parts[1].data && Array.isArray(parts[1].data.results) ? parts[1].data.results : [];
+      const socialRows = parts[2] && parts[2].data && Array.isArray(parts[2].data.result) ? parts[2].data.result : [];
+      const trendingRows = parts[3];
+      const previous = rankState && rankState.tokenKey === key ? rankState : null;
+      const previousTrends = previous && previous.trendRanks ? previous.trendRanks : {};
+      const previousDirs = previous && previous.trendDirs ? previous.trendDirs : {};
+      const trendRanks = { "5m": null, "1h": null, "6h": null, "24h": null };
+      const trendDirs = { "5m": "", "1h": "", "6h": "", "24h": "" };
+      for (const item of ["5m", "1h", "6h", "24h"]) {
+        trendRanks[item] = cleanStoredRank(previousTrends[item]);
+        trendDirs[item] = previousDirs[item] === "up" || previousDirs[item] === "down" ? previousDirs[item] : "";
+      }
+      const trendingRank = Array.isArray(trendingRows) ? rankIn(trendingRows, token) : cleanStoredRank(trendRanks[trend]);
+      trendDirs[trend] = nextDir(trendRanks[trend], trendDirs[trend], trendingRank);
+      trendRanks[trend] = trendingRank;
+      const hotRank = parts[0] && Array.isArray(parts[0].data) ? rankIn(hotRows, token) : previous ? previous.hot : null;
+      const nitroRank = parts[1] && parts[1].data && Array.isArray(parts[1].data.results) ? rankIn(nitroRows, token) : previous ? previous.nitro : null;
+      const updatesRank = parts[2] && parts[2].data && Array.isArray(parts[2].data.result) ? rankIn(socialRows, token) : previous ? previous.updates : null;
+      const next = {
+        tokenKey: key,
+        trend,
+        at: Date.now(),
+        hot: hotRank,
+        hotDir: nextDir(previous && previous.hot, previous && previous.hotDir, hotRank),
+        nitro: nitroRank,
+        nitroDir: nextDir(previous && previous.nitro, previous && previous.nitroDir, nitroRank),
+        updates: updatesRank,
+        updatesDir: nextDir(previous && previous.updates, previous && previous.updatesDir, updatesRank),
+        trendRanks,
+        trendDirs
+      };
+      rankState = next;
+      renderPanel(lastUnlabeled, lastComplete);
+      window.postMessage({ source: "twl-page", type: "ranks", ranks: next }, "*");
+    });
+  }
+
+  function cleanStoredRank(value) {
+    return typeof value === "number" && value > 0 ? value : null;
+  }
+
+  function collectTrending(urlForPage, token) {
+    const rows = [];
+    const seen = new Set();
+    const step = (page) => {
+      if (page > 15) return Promise.resolve(rows);
+      return apiGet(urlForPage(page), "2").then((data) => {
+        if (!data) return page === 1 ? null : rows;
+        const batch = data.data && Array.isArray(data.data.result) ? data.data.result : [];
+        if (!batch.length) return rows;
+        const marker = String(batch[0].address || "") + "|" + String(batch[0].mainToken && batch[0].mainToken.address || "");
+        if (seen.has(marker)) return rows;
+        seen.add(marker);
+        let found = false;
+        for (const row of batch) {
+          rows.push(row);
+          if (tokenMatches(row, token)) found = true;
+        }
+        if (found || batch.length < 20) return rows;
+        return step(page + 1);
+      });
+    };
+    return step(1);
+  }
+
+  function applyToken(token) {
+    if (!token || typeof token.name !== "string" || typeof token.ticker !== "string" || !token.name.trim() || !token.ticker.trim()) {
+      tokenProfile = null;
+      renderPanel(lastUnlabeled, lastComplete);
+      return;
+    }
+    const trends = ["5m", "1h", "6h", "24h"];
+    const next = {
+      name: token.name,
+      ticker: token.ticker,
+      ca: typeof token.ca === "string" ? token.ca.toLowerCase() : "",
+      pair: typeof token.pair === "string" ? token.pair.toLowerCase() : "",
+      base: typeof token.base === "string" ? token.base : "",
+      chain: typeof token.chain === "string" && token.chain ? token.chain : "ether",
+      trend: trends.includes(token.trend) ? token.trend : "24h"
+    };
+    const changed = !tokenProfile || tokenKey(tokenProfile) !== tokenKey(next) || tokenProfile.trend !== next.trend;
+    tokenProfile = next;
+    if (changed) refreshRanks();
+    else renderPanel(lastUnlabeled, lastComplete);
+  }
+
+  function applyRanks(ranks) {
+    if (!ranks || typeof ranks.tokenKey !== "string") return;
+    if (!tokenProfile || ranks.tokenKey !== tokenKey(tokenProfile)) return;
+    if (rankState && ranks.at <= rankState.at) return;
+    rankState = ranks;
+    renderPanel(lastUnlabeled, lastComplete);
+  }
+
+  function rankValue(rank, dir) {
+    const value = document.createElement("span");
+    value.className = "twl-rank-value";
+    if (!shownRanks()) {
+      value.textContent = "…";
+      return value;
+    }
+    if (rank == null) {
+      value.classList.add("miss");
+      value.textContent = "✕";
+      value.title = "Not on this list";
+      return value;
+    }
+    value.textContent = "#" + rank;
+    if (dir === "up" || dir === "down") {
+      const icon = document.createElement("span");
+      icon.className = "twl-rank-dir " + dir;
+      icon.textContent = dir === "up" ? "▲" : "▼";
+      icon.title = dir === "up" ? "Rank went up" : "Rank went down";
+      value.appendChild(icon);
+    }
+    return value;
+  }
+
+  function shownRanks() {
+    if (!rankState || !tokenProfile || rankState.tokenKey !== tokenKey(tokenProfile)) return null;
+    return rankState;
+  }
+
+  function appendRanks(panel) {
+    if (!tokenProfile) return;
+    const ranks = shownRanks();
+    const block = document.createElement("div");
+    block.className = "twl-ranks";
+    const head = document.createElement("div");
+    head.className = "twl-rank-head";
+    head.textContent = tokenProfile.ticker.trim() || tokenProfile.name;
+    block.appendChild(head);
+    const trend = tokenProfile.trend || "24h";
+    const trendRank = ranks && ranks.trendRanks ? ranks.trendRanks[trend] : null;
+    const trendDir = ranks && ranks.trendDirs ? ranks.trendDirs[trend] : "";
+    const rows = [
+      ["Hot Pair", ranks ? ranks.hot : null, ranks ? ranks.hotDir : ""],
+      ["Trending " + trend, ranks ? trendRank : null, ranks ? trendDir : ""],
+      ["Nitro", ranks ? ranks.nitro : null, ranks ? ranks.nitroDir : ""],
+      ["Updates", ranks ? ranks.updates : null, ranks ? ranks.updatesDir : ""]
+    ];
+    for (const item of rows) {
+      const row = document.createElement("div");
+      row.className = "twl-rank-row";
+      const label = document.createElement("span");
+      label.className = "twl-rank-label";
+      label.textContent = item[0];
+      row.append(label, rankValue(item[1], item[2]));
+      block.appendChild(row);
+    }
+    panel.appendChild(block);
   }
 
   function placePanel(panel) {
@@ -1318,6 +1590,8 @@
     if (data.type === "labels") setLabels(data.labels);
     if (data.type === "quote") applyQuote(data);
     if (data.type === "stats-sync") applyRemoteStats(data);
+    if (data.type === "token") applyToken(data.token);
+    if (data.type === "ranks") applyRanks(data.ranks);
     if (data.type === "settings") {
       showSum = Boolean(data.showSum);
       if (typeof data.showTable === "boolean") showTable = data.showTable;
@@ -1351,6 +1625,7 @@
     setTimeout(requestLabels, 1500);
     refreshPooled();
     setInterval(refreshPooled, 10000);
+    setInterval(refreshRanks, 20000);
   };
 
   if (document.documentElement) start();

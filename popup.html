@@ -45,6 +45,35 @@
         </div>
       </section>
       <section class="card saved-card">
+        <div class="field-label">
+          <span>My token</span>
+          <span class="hint">Shown on the label card</span>
+        </div>
+        <input id="tokenName" class="token-input" type="text" placeholder="Name (required)" autocomplete="off" spellcheck="false" />
+        <div class="token-row">
+          <input id="tokenTicker" class="token-input" type="text" placeholder="Ticker (required)" autocomplete="off" spellcheck="false" />
+          <select id="tokenChain" class="token-input" aria-label="Chain">
+            <option value="ether">Ethereum</option>
+            <option value="bsc">BNB Chain</option>
+            <option value="polygon">Polygon</option>
+            <option value="base">Base</option>
+            <option value="arbitrum">Arbitrum</option>
+          </select>
+        </div>
+        <input id="tokenCa" class="token-input" type="text" placeholder="CA (optional)" autocomplete="off" spellcheck="false" />
+        <input id="tokenPair" class="token-input" type="text" placeholder="Pair address (optional)" autocomplete="off" spellcheck="false" />
+        <input id="tokenBase" class="token-input" type="text" placeholder="Base token (optional)" autocomplete="off" spellcheck="false" />
+        <div class="field-label trend-label">
+          <span>Trending rank</span>
+        </div>
+        <div class="trend" id="tokenTrend" role="group" aria-label="Trending window">
+          <button type="button" data-trend="5m">5m</button>
+          <button type="button" data-trend="1h">1h</button>
+          <button type="button" data-trend="6h">6h</button>
+          <button type="button" data-trend="24h" class="on">24h</button>
+        </div>
+        <p id="tokenMessage" class="form-message"></p>
+        <button id="saveToken" class="save token-save" type="button">Save token</button>
         <h2>Saved labels</h2>
         <label class="show-sum" for="showSum">
           <input id="showSum" type="checkbox" />

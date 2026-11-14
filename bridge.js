@@ -33,6 +33,70 @@ function publishLabels() {
   });
 }
 
+function cleanToken(value) {
+  if (!value || typeof value.name !== "string" || typeof value.ticker !== "string") return null;
+  if (!value.name.trim() || !value.ticker.trim()) return null;
+  const trends = ["5m", "1h", "6h", "24h"];
+  const chains = ["ether", "bsc", "polygon", "base", "arbitrum"];
+  return {
+    name: value.name,
+    ticker: value.ticker,
+    ca: typeof value.ca === "string" ? value.ca.toLowerCase() : "",
+    pair: typeof value.pair === "string" ? value.pair.toLowerCase() : "",
+    base: typeof value.base === "string" ? value.base : "",
+    chain: chains.includes(value.chain) ? value.chain : "ether",
+    trend: trends.includes(value.trend) ? value.trend : "24h"
+  };
+}
+
+function cleanRank(value) {
+  if (typeof value === "number" && value > 0) return value;
+  return null;
+}
+
+function cleanDir(value) {
+  return value === "up" || value === "down" ? value : "";
+}
+
+function cleanRanks(value) {
+  if (!value || typeof value.tokenKey !== "string") return null;
+  const trends = ["5m", "1h", "6h", "24h"];
+  const trend = trends.includes(value.trend) ? value.trend : "24h";
+  const trendRanks = {};
+  const trendDirs = {};
+  const sourceRanks = value.trendRanks && typeof value.trendRanks === "object" ? value.trendRanks : {};
+  const sourceDirs = value.trendDirs && typeof value.trendDirs === "object" ? value.trendDirs : {};
+  for (const item of trends) {
+    trendRanks[item] = cleanRank(sourceRanks[item]);
+    trendDirs[item] = cleanDir(sourceDirs[item]);
+  }
+  return {
+    tokenKey: value.tokenKey,
+    trend,
+    at: Number(value.at) || 0,
+    hot: cleanRank(value.hot),
+    hotDir: cleanDir(value.hotDir),
+    nitro: cleanRank(value.nitro),
+    nitroDir: cleanDir(value.nitroDir),
+    updates: cleanRank(value.updates),
+    updatesDir: cleanDir(value.updatesDir),
+    trendRanks,
+    trendDirs
+  };
+}
+
+function publishToken() {
+  chrome.storage.local.get({ twlToken: null }, (data) => {
+    window.postMessage({ source: EXT_SOURCE, type: "token", token: cleanToken(data.twlToken) }, "*");
+  });
+}
+
+function publishRanks(ranks) {
+  const next = cleanRanks(ranks);
+  if (!next) return;
+  window.postMessage({ source: EXT_SOURCE, type: "ranks", ranks: next }, "*");
+}
+
 function publishSettings() {
   chrome.storage.local.get({ twlShowSum: false, twlShowTable: false }, (data) => {
     window.postMessage(
@@ -97,6 +161,7 @@ function publishStatsSync(stats) {
 
 let quoteMem = null;
 let statsMem = null;
+let ranksMem = null;
 
 function rememberQuote(quote) {
   if (!quote || typeof quote.key !== "string") return null;
@@ -125,6 +190,12 @@ function rememberQuote(quote) {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.labels) publishLabels();
+  if (changes.twlToken) publishToken();
+  if (changes.twlRanks) {
+    const incoming = cleanRanks(changes.twlRanks.newValue);
+    if (incoming && (!ranksMem || incoming.at >= ranksMem.at)) ranksMem = incoming;
+    publishRanks(ranksMem);
+  }
   if (changes.twlShowSum || changes.twlShowTable) publishSettings();
   if (changes.twlQuote) {
     rememberQuote(changes.twlQuote.newValue);
@@ -144,8 +215,17 @@ window.addEventListener("message", (event) => {
   if (data.type === "request-labels") {
     publishLabels();
     publishSettings();
+    publishToken();
     publishQuote(quoteMem);
     publishStatsSync(statsMem);
+    publishRanks(ranksMem);
+    return;
+  }
+  if (data.type === "ranks" && data.ranks) {
+    const incoming = cleanRanks(data.ranks);
+    if (!incoming || (ranksMem && incoming.tokenKey === ranksMem.tokenKey && incoming.at <= ranksMem.at)) return;
+    ranksMem = incoming;
+    chrome.storage.local.set({ twlRanks: incoming });
     return;
   }
   if (data.type === "hide-sum") {
@@ -197,10 +277,13 @@ window.addEventListener("message", (event) => {
 
 publishLabels();
 publishSettings();
-chrome.storage.local.get({ twlQuote: null, twlStats: null }, (stored) => {
+publishToken();
+chrome.storage.local.get({ twlQuote: null, twlStats: null, twlRanks: null }, (stored) => {
   if (stored.twlQuote) rememberQuote(stored.twlQuote);
   if (takeStats(statsMem, stored.twlStats)) statsMem = stored.twlStats;
   else if (statsMem) chrome.storage.local.set({ twlStats: statsMem });
+  ranksMem = cleanRanks(stored.twlRanks);
   publishQuote(quoteMem);
   publishStatsSync(statsMem);
+  publishRanks(ranksMem);
 });

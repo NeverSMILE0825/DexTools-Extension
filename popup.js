@@ -1,6 +1,19 @@
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 const STORAGE_KEY = "twl-labels";
 
+const TRENDS = ["5m", "1h", "6h", "24h"];
+const CHAINS = ["ether", "bsc", "polygon", "base", "arbitrum"];
+const ASSET_ID = /^0x[a-fA-F0-9]{40,}(?:-\d+)*$/;
+
+const tokenNameInput = document.getElementById("tokenName");
+const tokenTickerInput = document.getElementById("tokenTicker");
+const tokenCaInput = document.getElementById("tokenCa");
+const tokenPairInput = document.getElementById("tokenPair");
+const tokenBaseInput = document.getElementById("tokenBase");
+const tokenChainInput = document.getElementById("tokenChain");
+const tokenTrendBox = document.getElementById("tokenTrend");
+const tokenMessage = document.getElementById("tokenMessage");
+
 const labelNameInput = document.getElementById("labelName");
 const addressesInput = document.getElementById("addresses");
 const addressCount = document.getElementById("addressCount");
@@ -12,6 +25,7 @@ const statusLine = document.getElementById("status");
 
 let labels = [];
 let editingId = null;
+let tokenTrend = "24h";
 let stats = null;
 let activePair = "";
 let activeUrl = "";
@@ -145,6 +159,78 @@ async function saveLabels(next) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }
   renderSaved();
+}
+
+function setTokenMessage(text, kind) {
+  tokenMessage.textContent = text || "";
+  tokenMessage.className = "form-message" + (kind ? " " + kind : "");
+}
+
+function selectedTrend() {
+  return TRENDS.includes(tokenTrend) ? tokenTrend : "24h";
+}
+
+function paintTrend() {
+  const buttons = tokenTrendBox.querySelectorAll("button");
+  for (const button of buttons) button.classList.toggle("on", button.dataset.trend === selectedTrend());
+}
+
+function readTokenForm() {
+  const name = tokenNameInput.value;
+  const ticker = tokenTickerInput.value;
+  const ca = tokenCaInput.value.trim();
+  const pair = tokenPairInput.value.trim();
+  const base = tokenBaseInput.value.trim();
+  const chain = CHAINS.includes(tokenChainInput.value) ? tokenChainInput.value : "ether";
+  return { name, ticker, ca, pair, base, chain, trend: selectedTrend() };
+}
+
+function applyTokenForm(token) {
+  tokenNameInput.value = token && typeof token.name === "string" ? token.name : "";
+  tokenTickerInput.value = token && typeof token.ticker === "string" ? token.ticker : "";
+  tokenCaInput.value = token && typeof token.ca === "string" ? token.ca : "";
+  tokenPairInput.value = token && typeof token.pair === "string" ? token.pair : "";
+  tokenBaseInput.value = token && typeof token.base === "string" ? token.base : "";
+  tokenChainInput.value = token && CHAINS.includes(token.chain) ? token.chain : "ether";
+  tokenTrend = token && TRENDS.includes(token.trend) ? token.trend : "24h";
+  paintTrend();
+}
+
+async function saveToken(trendOnly) {
+  const token = readTokenForm();
+  if (!token.name.trim()) {
+    setTokenMessage("Enter the token name.", "err");
+    tokenNameInput.focus();
+    return;
+  }
+  if (!token.ticker.trim()) {
+    setTokenMessage("Enter the token ticker.", "err");
+    tokenTickerInput.focus();
+    return;
+  }
+  if (token.ca && !ASSET_ID.test(token.ca)) {
+    setTokenMessage("CA must be a full 0x address.", "err");
+    tokenCaInput.focus();
+    return;
+  }
+  if (token.pair && !ASSET_ID.test(token.pair)) {
+    setTokenMessage("Pair address must be a full 0x pair id.", "err");
+    tokenPairInput.focus();
+    return;
+  }
+  const next = {
+    name: token.name,
+    ticker: token.ticker,
+    ca: token.ca.toLowerCase(),
+    pair: token.pair.toLowerCase(),
+    base: token.base,
+    chain: token.chain,
+    trend: token.trend,
+    updatedAt: Date.now()
+  };
+  if (hasExtensionStorage()) await chrome.storage.local.set({ twlToken: next });
+  else localStorage.setItem("twl-token", JSON.stringify(next));
+  setTokenMessage(trendOnly ? "Trending window saved." : "Saved " + token.ticker.trim() + ".", "ok");
 }
 
 function setMessage(text, kind) {
@@ -345,6 +431,15 @@ addressesInput.addEventListener("input", () => {
   updateCount();
   setMessage("");
 });
+tokenTrendBox.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button || !TRENDS.includes(button.dataset.trend)) return;
+  tokenTrend = button.dataset.trend;
+  paintTrend();
+  const draft = readTokenForm();
+  if (draft.name.trim() && draft.ticker.trim()) saveToken(true);
+});
+document.getElementById("saveToken").addEventListener("click", () => saveToken(false));
 document.getElementById("save").addEventListener("click", saveForm);
 document.getElementById("clear").addEventListener("click", clearForm);
 showSumInput.addEventListener("change", () => {
@@ -356,11 +451,21 @@ addressesInput.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") saveForm();
 });
 
+paintTrend();
 loadLabels().then((stored) => {
   labels = stored;
   renderSaved();
   updateCount();
 });
+if (hasExtensionStorage()) {
+  chrome.storage.local.get({ twlToken: null }, (data) => applyTokenForm(data.twlToken));
+} else {
+  try {
+    applyTokenForm(JSON.parse(localStorage.getItem("twl-token") || "null"));
+  } catch (error) {
+    applyTokenForm(null);
+  }
+}
 if (hasExtensionStorage()) {
   chrome.storage.local.get({ twlShowSum: false }, (data) => {
     showSumInput.checked = Boolean(data.twlShowSum);
