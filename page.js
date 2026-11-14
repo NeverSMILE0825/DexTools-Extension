@@ -1072,7 +1072,7 @@
     if (showRanks) refreshRanks();
   }
 
-  function refreshRanks() {
+  function refreshRanks(force) {
     const token = tokenProfile;
     if (!showRanks || !token) return;
     const key = tokenKey(token);
@@ -1083,20 +1083,20 @@
       rankState.trend === trend &&
       rankState.trendRanks &&
       rankState.trendRanks[trend] == null;
-    if (rankState && rankState.tokenKey === key && rankState.trend === trend && Date.now() - rankState.at < (trendMissing ? 45000 : 12000)) return;
+    const freshMs = trendMissing ? 20000 : 12000;
+    if (!force && rankState && rankState.tokenKey === key && rankState.trend === trend && Date.now() - rankState.at < freshMs) return;
     const ticket = ++rankFetch;
     const chain = encodeURIComponent(token.chain);
     const hotUrl = "https://www.dextools.io/api/core/pool/listing/hotpairs?chain=" + chain + "&mode=full";
     const nitroUrl = "https://www.dextools.io/api/core/pool/listing/token-race?lite=false";
     const socialUrl = "https://www.dextools.io/api/core/token/listings/social-network-updates/list?limit=100&chain=" + chain;
     const trendingUrl = (page) =>
-      "https://www.dextools.io/api/core/pool/listing/dashboard?chains=" +
-      chain +
-      "&page=" +
+      "https://www.dextools.io/api/core/pool/listing/dashboard?page=" +
       page +
       "&pageSize=50&sortBy=trending" +
       trend +
-      "&sortOrder=desc";
+      "&excludeNative=true&chains=" +
+      chain;
     Promise.all([apiGet(hotUrl, "2"), apiGet(nitroUrl, "2"), apiGet(socialUrl, "1"), collectTrending(trendingUrl, token)]).then((parts) => {
       if (ticket !== rankFetch || !tokenProfile || tokenKey(tokenProfile) !== key || tokenProfile.trend !== trend) return;
       const hotRows = parts[0] && Array.isArray(parts[0].data) ? parts[0].data : [];
@@ -1145,9 +1145,9 @@
     const rows = [];
     const seen = new Set();
     const step = (page) => {
-      if (page > 15) return Promise.resolve(rows);
+      if (page > 14) return Promise.resolve(rows);
       return apiGet(urlForPage(page), "2").then((data) => {
-        if (!data) return page === 1 ? null : rows;
+        if (!data) return page === 0 ? null : rows;
         const batch = data.data && Array.isArray(data.data.result) ? data.data.result : [];
         if (!batch.length) return rows;
         const marker = String(batch[0].address || "") + "|" + String(batch[0].mainToken && batch[0].mainToken.address || "");
@@ -1162,7 +1162,7 @@
         return step(page + 1);
       });
     };
-    return step(1);
+    return step(0);
   }
 
   function applyToken(token) {
@@ -1183,7 +1183,7 @@
     };
     const changed = !tokenProfile || tokenKey(tokenProfile) !== tokenKey(next) || tokenProfile.trend !== next.trend;
     tokenProfile = next;
-    if (changed) refreshRanks();
+    if (changed) refreshRanks(true);
     else renderPanel(lastUnlabeled, lastComplete);
   }
 
