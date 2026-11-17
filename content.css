@@ -272,6 +272,10 @@ span.only-address.twl-labeled {
   font-variant-numeric: tabular-nums;
 }
 
+.twl-sum-pool-value.hot {
+  color: #ff6b78;
+}
+
 .twl-ranks {
   margin-top: 8px;
   padding-top: 6px;

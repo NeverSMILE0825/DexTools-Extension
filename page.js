@@ -861,14 +861,14 @@
     scroller.scrollTop = scrollTop;
   }
 
-  function poolStat(label, value) {
+  function poolStat(label, value, tone) {
     const stat = document.createElement("span");
     stat.className = "twl-sum-stat";
     const name = document.createElement("span");
     name.className = "twl-sum-stat-label";
     name.textContent = label;
     const amount = document.createElement("span");
-    amount.className = "twl-sum-pool-value";
+    amount.className = "twl-sum-pool-value" + (tone ? " " + tone : "");
     amount.textContent = value;
     stat.append(name, amount);
     return stat;
@@ -972,7 +972,7 @@
     const gas = gasFor === currentPairKey() ? gasGwei : null;
     pool.append(
       poolStat("Pooled ETH", pooled == null ? "…" : formatPool(pooled) + " ETH"),
-      poolStat("Gas", gas == null ? "…" : formatGwei(gas))
+      poolStat("Gas", gas == null ? "…" : formatGwei(gas), gas != null && gas > 0.15 ? "hot" : "")
     );
     panel.appendChild(pool);
     appendRanks(panel);
