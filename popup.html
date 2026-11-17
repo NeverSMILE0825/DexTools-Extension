@@ -45,7 +45,14 @@
         </div>
       </section>
       <section class="card saved-card">
-        <div class="field-label">
+        <h2>Saved labels</h2>
+        <label class="show-sum" for="showSum">
+          <input id="showSum" type="checkbox" />
+          <span>Show unlabeled total on the page</span>
+        </label>
+        <p id="savedSummary" class="summary">0 labels · 0 wallets</p>
+        <div id="savedList" class="saved-list"></div>
+        <div class="field-label token-heading">
           <span>My token</span>
           <span class="hint">Shown on the label card</span>
         </div>
@@ -78,13 +85,6 @@
           <input id="showRanks" type="checkbox" checked />
           <span>Show ranks on the card</span>
         </label>
-        <h2>Saved labels</h2>
-        <label class="show-sum" for="showSum">
-          <input id="showSum" type="checkbox" />
-          <span>Show unlabeled total on the page</span>
-        </label>
-        <p id="savedSummary" class="summary">0 labels · 0 wallets</p>
-        <div id="savedList" class="saved-list"></div>
       </section>
     </div>
     <footer>Local only · No wallet connection · No trading access</footer>

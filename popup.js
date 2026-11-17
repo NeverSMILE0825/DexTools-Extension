@@ -249,23 +249,12 @@ function renderSaved() {
   const visible = labels.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const counting = Boolean(stats && !stats.complete && activePair && stats.pair === activePair);
   const matched = stats && stats.complete && activePair && stats.pair === activePair ? stats.matched : null;
-  const breakdown = visible
-    .map((label) => {
-      const trades = tradeCount(label.name);
-      const unlabeled = unlabeledOf(label.name);
-      const net = unlabeled ? ", unlabeled " + unlabeledText(unlabeled) : "";
-      if (typeof trades === "number") return label.name + " (" + plural(trades, "trade") + net + ")";
-      if (unlabeled) return label.name + " (unlabeled " + unlabeledText(unlabeled) + ")";
-      return label.name + " (" + plural(label.addresses.length, "address") + ")";
-    })
-    .join(" · ");
   savedSummary.textContent =
     plural(labels.length, "label") +
     " · " +
     plural(wallets, "address") +
     (typeof matched === "number" ? " · " + plural(matched, "trade") + " on this pair" : "") +
-    (counting ? " · counting trades" : "") +
-    (breakdown ? " · " + breakdown : "");
+    (counting ? " · counting trades" : "");
   savedList.textContent = "";
   if (!visible.length) {
     const empty = document.createElement("p");
@@ -318,7 +307,10 @@ function renderSaved() {
     remove.textContent = "Delete";
     remove.addEventListener("click", () => removeLabel(label.id));
 
-    row.append(pill, count, edit, remove);
+    const main = document.createElement("div");
+    main.className = "saved-main";
+    main.append(pill, count, edit, remove);
+    row.append(main);
     if (sum) row.append(sum);
     savedList.appendChild(row);
   }

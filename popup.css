@@ -298,21 +298,32 @@ h2 {
 
 .summary {
   flex-shrink: 0;
-  max-height: 88px;
-  margin: 4px 0 10px;
-  overflow: auto;
-  line-height: 1.45;
+  margin: 0 0 8px;
+  line-height: 1.35;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .saved-list {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: 76px;
+  max-height: 168px;
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.token-heading {
+  margin-top: 12px;
+}
+
+.saved-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 
 .empty {

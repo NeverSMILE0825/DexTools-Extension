@@ -123,7 +123,7 @@
     if (trade.blockNumber == null || trade.logIndex == null) return;
     if (!(trade.amount > 0) || !(trade.timestamp > 0)) return;
     const age = Date.now() - trade.timestamp * 1000;
-    if (age < -90000 || age > 180000) return;
+    if (age < -120000 || age > 600000) return;
     const noteKey = trade.id + ":" + trade.type;
     if (seenTradeIds.has(noteKey)) return;
     seenTradeIds.add(noteKey);
@@ -144,6 +144,7 @@
   function declaredPair(value) {
     const candidates = [value.pair, value.pairAddress, value.poolAddress];
     if (value.id && typeof value.id === "object") candidates.push(value.id.pair);
+    if (typeof value.pool === "string") candidates.push(value.pool);
     if (value.pool && typeof value.pool === "object") {
       candidates.push(value.pool.pair, value.pool.address);
     }
@@ -208,7 +209,7 @@
       return;
     }
     const found = [];
-    collect(data, found, 0, new Set(), hint === current ? current : "");
+    collect(data, found, 0, new Set(), hint === current || !hint ? current : "");
     let changed = false;
     for (const item of found) {
       if (remember(item.id, item.maker)) changed = true;
@@ -1409,6 +1410,7 @@
         .catch(() => {
           if (token !== indexToken) return;
           if (!cursor) indexedKey = "";
+          else markIndexComplete();
           publishStats(info);
           schedule();
         });

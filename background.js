@@ -19,11 +19,17 @@ chrome.runtime.onMessage.addListener((message) => {
   const time = message.time || "Just now";
   const amount = message.amount || "0";
   const maker = message.maker || "";
-  chrome.notifications.create(noteId(message), {
-    type: "basic",
-    iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-    title,
-    message: "Time: " + time + "\nTotal ETH: " + amount + "\nMaker: " + maker,
-    priority: 2
-  });
+  chrome.notifications.create(
+    noteId(message),
+    {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+      title,
+      message: "Time: " + time + "\nTotal ETH: " + amount + "\nMaker: " + maker,
+      priority: 2
+    },
+    () => {
+      void chrome.runtime.lastError;
+    }
+  );
 });
