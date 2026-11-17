@@ -12,6 +12,7 @@
   let showSum = false;
   let showBot = true;
   let showTable = false;
+  let showBotTable = false;
   let showRanks = true;
   let lastUnlabeled = {};
   let lastComplete = false;
@@ -819,21 +820,27 @@
     return (bases[chain] || bases.ether) + id;
   }
 
-  function renderTrades(complete) {
-    const root = document.documentElement;
-    let table = document.getElementById("twl-trades");
-    if (!showSum || !showTable || !labelOrder.length) {
-      if (table) table.remove();
-      return;
+  function botTrades() {
+    const rows = [];
+    for (const trade of trades.values()) {
+      if (!trade.bot) continue;
+      if (trade.type !== "buy" && trade.type !== "sell") continue;
+      rows.push(trade);
     }
-    const headers = readTradeHeaders();
-    const rows = unlabeledTrades();
+    rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || String(b.id).localeCompare(String(a.id)));
+    return rows;
+  }
+
+  function renderTradeTable(tableId, titleText, rows, complete, onHide) {
+    const root = document.documentElement;
+    let table = document.getElementById(tableId);
     if (!table) {
       table = document.createElement("section");
-      table.id = "twl-trades";
+      table.id = tableId;
       table.className = "twl-trades";
       root.appendChild(table);
     }
+    const headers = readTradeHeaders();
     const previousScroll = table.querySelector(".twl-trades-scroll");
     const scrollTop = previousScroll ? previousScroll.scrollTop : 0;
     table.textContent = "";
@@ -841,18 +848,14 @@
     head.className = "twl-trades-head";
     const title = document.createElement("div");
     title.className = "twl-trades-title";
-    title.textContent = "Unlabeled trades";
+    title.textContent = titleText;
     const tools = document.createElement("div");
     tools.className = "twl-trades-tools";
     const hideTrades = document.createElement("button");
     hideTrades.type = "button";
     hideTrades.className = "twl-trades-hide";
     hideTrades.textContent = "Hide trades";
-    hideTrades.addEventListener("click", () => {
-      showTable = false;
-      window.postMessage({ source: "twl-page", type: "show-table", showTable: false }, "*");
-      renderPanel(lastUnlabeled, lastComplete);
-    });
+    hideTrades.addEventListener("click", onHide);
     const count = document.createElement("div");
     count.className = "twl-trades-count";
     count.textContent = rows.length + (rows.length === 1 ? " trade" : " trades") + (complete ? "" : " · counting");
@@ -899,6 +902,32 @@
     scroller.scrollTop = scrollTop;
   }
 
+  function renderTrades(complete) {
+    if (!showSum || !showTable || !labelOrder.length) {
+      const table = document.getElementById("twl-trades");
+      if (table) table.remove();
+      return;
+    }
+    renderTradeTable("twl-trades", "Unlabeled trades", unlabeledTrades(), complete, () => {
+      showTable = false;
+      window.postMessage({ source: "twl-page", type: "show-table", showTable: false }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
+  }
+
+  function renderBotTrades(complete) {
+    if (!showBot || !showBotTable || !pairFromLocation()) {
+      const table = document.getElementById("twl-bot-trades");
+      if (table) table.remove();
+      return;
+    }
+    renderTradeTable("twl-bot-trades", "Bot / Smart contract trades", botTrades(), complete, () => {
+      showBotTable = false;
+      window.postMessage({ source: "twl-page", type: "show-bot-table", showBotTable: false }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
+  }
+
   function poolStat(label, value, tone) {
     const stat = document.createElement("span");
     stat.className = "twl-sum-stat";
@@ -917,6 +946,8 @@
     const existing = document.getElementById("twl-bot");
     if (!root || !showBot || !pairFromLocation()) {
       if (existing) existing.remove();
+      const tradesPanel = document.getElementById("twl-bot-trades");
+      if (tradesPanel) tradesPanel.remove();
       return;
     }
     const shown = shownBot(botTotals(), complete);
@@ -934,6 +965,16 @@
     const title = document.createElement("div");
     title.className = "twl-sum-title";
     title.textContent = "Bot / Smart Contract";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "twl-sum-hide";
+    toggle.textContent = showBotTable ? "Hide trades" : "Show trades";
+    toggle.title = "Show or hide every trade with the Bot / Smart contract icon.";
+    toggle.addEventListener("click", () => {
+      showBotTable = !showBotTable;
+      window.postMessage({ source: "twl-page", type: "show-bot-table", showBotTable }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
     const hide = document.createElement("button");
     hide.type = "button";
     hide.className = "twl-sum-hide";
@@ -943,10 +984,15 @@
       showBot = false;
       const current = document.getElementById("twl-bot");
       if (current) current.remove();
+      const tradesPanel = document.getElementById("twl-bot-trades");
+      if (tradesPanel) tradesPanel.remove();
       placePanels();
       window.postMessage({ source: "twl-page", type: "hide-bot" }, "*");
     });
-    head.append(title, hide);
+    const actions = document.createElement("div");
+    actions.className = "twl-sum-actions";
+    actions.append(toggle, hide);
+    head.append(title, actions);
     panel.appendChild(head);
     const row = document.createElement("div");
     row.className = "twl-sum-row";
@@ -979,6 +1025,7 @@
       ? "Bot / Smart contract trades. Full pair history."
       : "Bot / Smart contract trades. Counting the full pair.";
     panel.appendChild(note);
+    renderBotTrades(shown.complete);
   }
 
   function renderPanel(unlabeled, complete) {
@@ -1750,6 +1797,7 @@
       showSum = Boolean(data.showSum);
       if (typeof data.showBot === "boolean") showBot = data.showBot;
       if (typeof data.showTable === "boolean") showTable = data.showTable;
+      if (typeof data.showBotTable === "boolean") showBotTable = data.showBotTable;
       if (typeof data.showRanks === "boolean") {
         const turnedOn = data.showRanks && !showRanks;
         showRanks = data.showRanks;

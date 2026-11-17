@@ -118,19 +118,23 @@ function publishRanks(ranks) {
 }
 
 function publishSettings() {
-  chrome.storage.local.get({ twlShowSum: false, twlShowBot: true, twlShowTable: false, twlShowRanks: true }, (data) => {
-    window.postMessage(
-      {
-        source: EXT_SOURCE,
-        type: "settings",
-        showSum: Boolean(data.twlShowSum),
-        showBot: data.twlShowBot !== false,
-        showTable: Boolean(data.twlShowTable),
-        showRanks: Boolean(data.twlShowRanks)
-      },
-      "*"
-    );
-  });
+  chrome.storage.local.get(
+    { twlShowSum: false, twlShowBot: true, twlShowTable: false, twlShowBotTable: false, twlShowRanks: true },
+    (data) => {
+      window.postMessage(
+        {
+          source: EXT_SOURCE,
+          type: "settings",
+          showSum: Boolean(data.twlShowSum),
+          showBot: data.twlShowBot !== false,
+          showTable: Boolean(data.twlShowTable),
+          showBotTable: Boolean(data.twlShowBotTable),
+          showRanks: Boolean(data.twlShowRanks)
+        },
+        "*"
+      );
+    }
+  );
 }
 
 function statsRank(complete, indexed) {
@@ -219,7 +223,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (incoming && (!ranksMem || incoming.at >= ranksMem.at)) ranksMem = incoming;
     publishRanks(ranksMem);
   }
-  if (changes.twlShowSum || changes.twlShowBot || changes.twlShowTable || changes.twlShowRanks) publishSettings();
+  if (changes.twlShowSum || changes.twlShowBot || changes.twlShowTable || changes.twlShowBotTable || changes.twlShowRanks) publishSettings();
   if (changes.twlQuote) {
     rememberQuote(changes.twlQuote.newValue);
     publishQuote(quoteMem);
@@ -261,6 +265,10 @@ window.addEventListener("message", (event) => {
   }
   if (data.type === "show-table") {
     chrome.storage.local.set({ twlShowTable: Boolean(data.showTable) });
+    return;
+  }
+  if (data.type === "show-bot-table") {
+    chrome.storage.local.set({ twlShowBotTable: Boolean(data.showBotTable) });
     return;
   }
   if (data.type === "show-ranks") {

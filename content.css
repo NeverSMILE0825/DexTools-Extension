@@ -56,6 +56,10 @@ span.only-address.twl-labeled {
   flex: 0 0 auto;
 }
 
+#twl-bot-trades {
+  z-index: 2147483001;
+}
+
 .twl-trades {
   position: fixed;
   z-index: 2147483000;
