@@ -21,6 +21,7 @@ const formMessage = document.getElementById("formMessage");
 const savedList = document.getElementById("savedList");
 const savedSummary = document.getElementById("savedSummary");
 const showSumInput = document.getElementById("showSum");
+const showBotInput = document.getElementById("showBot");
 const showRanksInput = document.getElementById("showRanks");
 const statusLine = document.getElementById("status");
 
@@ -244,6 +245,33 @@ function updateCount() {
   addressCount.textContent = plural(parsed.valid.length, "address");
 }
 
+function paintBotSummary() {
+  const botSummary = document.getElementById("botSummary");
+  if (!botSummary) return;
+  const bot = stats && stats.bot && activePair && stats.pair === activePair ? stats.bot : null;
+  if (!bot || (!stats.complete && !stats.indexed)) {
+    botSummary.textContent = "";
+    botSummary.hidden = true;
+    return;
+  }
+  const eth = typeof bot.eth === "number" ? bot.eth : 0;
+  const buys = typeof bot.buys === "number" ? bot.buys : 0;
+  const sells = typeof bot.sells === "number" ? bot.sells : 0;
+  const count = typeof bot.count === "number" ? bot.count : buys + sells;
+  botSummary.hidden = false;
+  botSummary.textContent =
+    "Bot " +
+    plural(count, "trade") +
+    " · " +
+    plural(buys, "buy") +
+    " · " +
+    plural(sells, "sell") +
+    " · " +
+    formatEth(eth) +
+    " ETH" +
+    (stats.complete ? "" : " · counting");
+}
+
 function renderSaved() {
   const wallets = labels.reduce((sum, label) => sum + (label.addresses ? label.addresses.length : 0), 0);
   const visible = labels.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -255,6 +283,7 @@ function renderSaved() {
     plural(wallets, "address") +
     (typeof matched === "number" ? " · " + plural(matched, "trade") + " on this pair" : "") +
     (counting ? " · counting trades" : "");
+  paintBotSummary();
   savedList.textContent = "";
   if (!visible.length) {
     const empty = document.createElement("p");
@@ -440,6 +469,11 @@ showSumInput.addEventListener("change", () => {
   if (hasExtensionStorage()) chrome.storage.local.set({ twlShowSum: showSum });
   else localStorage.setItem("twl-show-sum", showSum ? "1" : "0");
 });
+showBotInput.addEventListener("change", () => {
+  const showBot = showBotInput.checked;
+  if (hasExtensionStorage()) chrome.storage.local.set({ twlShowBot: showBot });
+  else localStorage.setItem("twl-show-bot", showBot ? "1" : "0");
+});
 showRanksInput.addEventListener("change", () => {
   const showRanks = showRanksInput.checked;
   if (hasExtensionStorage()) chrome.storage.local.set({ twlShowRanks: showRanks });
@@ -465,12 +499,14 @@ if (hasExtensionStorage()) {
   }
 }
 if (hasExtensionStorage()) {
-  chrome.storage.local.get({ twlShowSum: false, twlShowRanks: true }, (data) => {
+  chrome.storage.local.get({ twlShowSum: false, twlShowBot: true, twlShowRanks: true }, (data) => {
     showSumInput.checked = Boolean(data.twlShowSum);
+    showBotInput.checked = data.twlShowBot !== false;
     showRanksInput.checked = Boolean(data.twlShowRanks);
   });
 } else {
   showSumInput.checked = localStorage.getItem("twl-show-sum") === "1";
+  showBotInput.checked = localStorage.getItem("twl-show-bot") !== "0";
   showRanksInput.checked = localStorage.getItem("twl-show-ranks") !== "0";
 }
 if (hasExtensionStorage()) {
@@ -482,6 +518,7 @@ if (hasExtensionStorage()) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.twlShowSum) showSumInput.checked = Boolean(changes.twlShowSum.newValue);
+    if (changes.twlShowBot) showBotInput.checked = changes.twlShowBot.newValue !== false;
     if (changes.twlShowRanks) showRanksInput.checked = Boolean(changes.twlShowRanks.newValue);
     if (changes.twlStats) {
       stats = changes.twlStats.newValue || null;

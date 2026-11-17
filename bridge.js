@@ -26,6 +26,26 @@ function cleanUnlabeled(value) {
   return out;
 }
 
+function cleanBot(value) {
+  if (!value || typeof value !== "object") return null;
+  const eth = Number(value.eth);
+  const buyEth = Number(value.buyEth);
+  const sellEth = Number(value.sellEth);
+  const buys = Number(value.buys);
+  const sells = Number(value.sells);
+  const buyCount = Number.isFinite(buys) ? buys : 0;
+  const sellCount = Number.isFinite(sells) ? sells : 0;
+  const count = Number(value.count);
+  return {
+    eth: Number.isFinite(eth) ? eth : 0,
+    buyEth: Number.isFinite(buyEth) ? buyEth : 0,
+    sellEth: Number.isFinite(sellEth) ? sellEth : 0,
+    buys: buyCount,
+    sells: sellCount,
+    count: Number.isFinite(count) ? count : buyCount + sellCount
+  };
+}
+
 function publishLabels() {
   chrome.storage.local.get({ labels: [] }, (data) => {
     const labels = Array.isArray(data.labels) ? data.labels : [];
@@ -98,12 +118,13 @@ function publishRanks(ranks) {
 }
 
 function publishSettings() {
-  chrome.storage.local.get({ twlShowSum: false, twlShowTable: false, twlShowRanks: true }, (data) => {
+  chrome.storage.local.get({ twlShowSum: false, twlShowBot: true, twlShowTable: false, twlShowRanks: true }, (data) => {
     window.postMessage(
       {
         source: EXT_SOURCE,
         type: "settings",
         showSum: Boolean(data.twlShowSum),
+        showBot: data.twlShowBot !== false,
         showTable: Boolean(data.twlShowTable),
         showRanks: Boolean(data.twlShowRanks)
       },
@@ -154,7 +175,8 @@ function publishStatsSync(stats) {
       indexed: stats.indexed,
       complete: stats.complete,
       statsAt: stats.statsAt,
-      unlabeled: stats.unlabeled
+      unlabeled: stats.unlabeled,
+      bot: cleanBot(stats.bot)
     },
     "*"
   );
@@ -197,7 +219,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (incoming && (!ranksMem || incoming.at >= ranksMem.at)) ranksMem = incoming;
     publishRanks(ranksMem);
   }
-  if (changes.twlShowSum || changes.twlShowTable || changes.twlShowRanks) publishSettings();
+  if (changes.twlShowSum || changes.twlShowBot || changes.twlShowTable || changes.twlShowRanks) publishSettings();
   if (changes.twlQuote) {
     rememberQuote(changes.twlQuote.newValue);
     publishQuote(quoteMem);
@@ -231,6 +253,10 @@ window.addEventListener("message", (event) => {
   }
   if (data.type === "hide-sum") {
     chrome.storage.local.set({ twlShowSum: false });
+    return;
+  }
+  if (data.type === "hide-bot") {
+    chrome.storage.local.set({ twlShowBot: false });
     return;
   }
   if (data.type === "show-table") {
@@ -273,6 +299,7 @@ window.addEventListener("message", (event) => {
     statsAt: Number(data.statsAt) || Date.now(),
     byName: data.byName && typeof data.byName === "object" ? data.byName : {},
     unlabeled: cleanUnlabeled(data.unlabeled),
+    bot: cleanBot(data.bot),
     updatedAt: Date.now()
   };
   if (!takeStats(statsMem, nextStats)) return;

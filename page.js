@@ -10,6 +10,7 @@
   let tailIndex = new Map();
   let labelOrder = [];
   let showSum = false;
+  let showBot = true;
   let showTable = false;
   let showRanks = true;
   let lastUnlabeled = {};
@@ -81,7 +82,8 @@
       priceETH: item.priceETH,
       amountUSD: item.amountUSD,
       amountToken: item.amountToken,
-      id: tx
+      id: tx,
+      bot: item.bot === true || Boolean(prev && prev.bot)
     };
     if (
       prev &&
@@ -90,7 +92,8 @@
       prev.amount === next.amount &&
       prev.timestamp === next.timestamp &&
       prev.price === next.price &&
-      prev.amountToken === next.amountToken
+      prev.amountToken === next.amountToken &&
+      prev.bot === next.bot
     ) {
       return false;
     }
@@ -185,7 +188,8 @@
         priceETH: num("priceETH"),
         amountUSD: num("amountUSD"),
         amountToken: num("amountToken"),
-        feedPair: pair
+        feedPair: pair,
+        bot: Boolean(value.others && value.others.bot)
       });
     }
     for (const key of Object.keys(value)) {
@@ -609,6 +613,7 @@
     remoteStats = {
       key,
       unlabeled: data.unlabeled,
+      bot: data.bot && typeof data.bot === "object" ? data.bot : null,
       complete: Boolean(data.complete),
       indexed: Number(data.indexed) || 0,
       statsAt: Number(data.statsAt) || 0
@@ -659,6 +664,39 @@
       };
     }
     return unlabeled;
+  }
+
+  function botTotals() {
+    const totals = { eth: 0, buyEth: 0, sellEth: 0, buys: 0, sells: 0, count: 0 };
+    for (const trade of trades.values()) {
+      if (!trade.bot) continue;
+      const isSell = trade.type === "sell";
+      totals.eth += isSell ? -trade.amount : trade.amount;
+      if (isSell) {
+        totals.sells += 1;
+        totals.sellEth += trade.amount;
+      } else {
+        totals.buys += 1;
+        totals.buyEth += trade.amount;
+      }
+    }
+    totals.eth = roundEth(totals.eth);
+    totals.buyEth = roundEth(totals.buyEth);
+    totals.sellEth = roundEth(totals.sellEth);
+    totals.count = totals.buys + totals.sells;
+    return totals;
+  }
+
+  function shownBot(localBot, complete) {
+    const local = { bot: localBot, complete };
+    const key = currentPairKey();
+    if (!remoteStats || remoteStats.key !== key || !remoteStats.bot) return local;
+    const remoteRank = statsRank(remoteStats.complete, remoteStats.indexed);
+    const localRank = statsRank(complete, txToMaker.size);
+    if (remoteRank > localRank || (remoteRank === localRank && remoteStats.statsAt > localStatsAt)) {
+      return { bot: remoteStats.bot, complete: Boolean(remoteStats.complete) };
+    }
+    return local;
   }
 
   function formatAmount(value) {
@@ -874,9 +912,79 @@
     return stat;
   }
 
+  function renderBotCard(complete) {
+    const root = document.documentElement;
+    const existing = document.getElementById("twl-bot");
+    if (!root || !showBot || !pairFromLocation()) {
+      if (existing) existing.remove();
+      return;
+    }
+    const shown = shownBot(botTotals(), complete);
+    const item = shown.bot;
+    let panel = existing;
+    if (!panel) {
+      panel = document.createElement("aside");
+      panel.id = "twl-bot";
+      panel.className = "twl-sum";
+      root.appendChild(panel);
+    }
+    panel.textContent = "";
+    const head = document.createElement("div");
+    head.className = "twl-sum-head";
+    const title = document.createElement("div");
+    title.className = "twl-sum-title";
+    title.textContent = "Bot / Smart Contract";
+    const hide = document.createElement("button");
+    hide.type = "button";
+    hide.className = "twl-sum-hide";
+    hide.textContent = "Hide";
+    hide.title = "Hide this card. Turn it back on from the extension popup.";
+    hide.addEventListener("click", () => {
+      showBot = false;
+      const current = document.getElementById("twl-bot");
+      if (current) current.remove();
+      placePanels();
+      window.postMessage({ source: "twl-page", type: "hide-bot" }, "*");
+    });
+    head.append(title, hide);
+    panel.appendChild(head);
+    const row = document.createElement("div");
+    row.className = "twl-sum-row";
+    const label = document.createElement("span");
+    label.className = "twl-sum-name";
+    label.textContent = "Total profit";
+    const value = document.createElement("span");
+    const tone = item.eth < 0 ? " neg" : item.eth > 0 ? " pos" : "";
+    value.className = "twl-sum-value" + tone;
+    value.textContent = formatEth(item.eth) + " ETH";
+    value.title = "Buys add Total ETH. Sells subtract Total ETH. Only trades with the Bot / Smart contract icon.";
+    row.append(label, value);
+    panel.appendChild(row);
+    const totals = document.createElement("div");
+    totals.className = "twl-sum-counts";
+    const buyEth = typeof item.buyEth === "number" ? item.buyEth : 0;
+    const sellEth = typeof item.sellEth === "number" ? item.sellEth : 0;
+    totals.textContent = "Buy total " + formatAmount(buyEth) + " ETH · Sell total " + formatAmount(sellEth) + " ETH";
+    panel.appendChild(totals);
+    const counts = document.createElement("div");
+    counts.className = "twl-sum-counts";
+    const buys = Number(item.buys) || 0;
+    const sells = Number(item.sells) || 0;
+    const count = Number(item.count) || buys + sells;
+    counts.textContent = count + " trades · " + buys + " buys · " + sells + " sells";
+    panel.appendChild(counts);
+    const note = document.createElement("div");
+    note.className = "twl-sum-note";
+    note.textContent = shown.complete
+      ? "Bot / Smart contract trades. Full pair history."
+      : "Bot / Smart contract trades. Counting the full pair.";
+    panel.appendChild(note);
+  }
+
   function renderPanel(unlabeled, complete) {
     lastUnlabeled = unlabeled;
     lastComplete = complete;
+    const localComplete = complete;
     const shown = preferredUnlabeled(unlabeled, complete);
     unlabeled = shown.unlabeled;
     complete = shown.complete;
@@ -887,6 +995,8 @@
     if (!showSum || !names.length) {
       if (panel) panel.remove();
       renderTrades(complete);
+      renderBotCard(localComplete);
+      placePanels();
       return;
     }
     if (!panel) {
@@ -976,8 +1086,9 @@
     );
     panel.appendChild(pool);
     appendRanks(panel);
-    placePanel(panel);
     renderTrades(complete);
+    renderBotCard(localComplete);
+    placePanels();
   }
 
   function tokenKey(token) {
@@ -1294,6 +1405,19 @@
     panel.style.overflow = "auto";
   }
 
+  function placePanels() {
+    const unlabeled = document.getElementById("twl-unlabeled");
+    const bot = document.getElementById("twl-bot");
+    if (unlabeled) placePanel(unlabeled);
+    if (!bot) return;
+    placePanel(bot);
+    if (!unlabeled) return;
+    const base = parseFloat(unlabeled.style.bottom) || 0;
+    const bottom = Math.round(base + unlabeled.offsetHeight + 8);
+    bot.style.bottom = bottom + "px";
+    bot.style.maxHeight = Math.max(120, window.innerHeight - bottom - 10) + "px";
+  }
+
   function publishStats(info) {
     const byName = {};
     let matched = 0;
@@ -1318,7 +1442,8 @@
         complete: indexComplete,
         statsAt: localStatsAt,
         byName,
-        unlabeled
+        unlabeled,
+        bot: botTotals()
       },
       "*"
     );
@@ -1623,6 +1748,7 @@
     if (data.type === "ranks") applyRanks(data.ranks);
     if (data.type === "settings") {
       showSum = Boolean(data.showSum);
+      if (typeof data.showBot === "boolean") showBot = data.showBot;
       if (typeof data.showTable === "boolean") showTable = data.showTable;
       if (typeof data.showRanks === "boolean") {
         const turnedOn = data.showRanks && !showRanks;
@@ -1651,8 +1777,7 @@
     setInterval(() => {
       startIndex();
       schedule();
-      const panel = document.getElementById("twl-unlabeled");
-      if (panel) placePanel(panel);
+      placePanels();
     }, 700);
     requestLabels();
     setTimeout(requestLabels, 400);
