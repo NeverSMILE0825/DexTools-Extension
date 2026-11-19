@@ -13,6 +13,7 @@
   let showBot = true;
   let showTable = false;
   let showBotTable = false;
+  const tableSort = new Map();
   let showRanks = true;
   let lastUnlabeled = {};
   let lastComplete = false;
@@ -831,6 +832,44 @@
     return rows;
   }
 
+  function makerTradeCounts() {
+    const counts = new Map();
+    for (const trade of trades.values()) {
+      if (trade.type !== "buy" && trade.type !== "sell") continue;
+      counts.set(trade.maker, (counts.get(trade.maker) || 0) + 1);
+    }
+    return counts;
+  }
+
+  function tradeSortValue(key, trade, no) {
+    if (key === "no") return no;
+    if (key === "date") return trade.timestamp || 0;
+    if (key === "type") return trade.type === "sell" ? "sell" : "buy";
+    if (key === "mcap" || key === "market cap") {
+      if (!(supplyFor === currentPairKey() && tokenSupply && trade.price != null)) return null;
+      return trade.price * tokenSupply;
+    }
+    if (key === "price usd") return trade.price;
+    if (key === "price eth") return trade.priceETH;
+    if (key === "total usd") return trade.amountUSD;
+    if (key === "total eth") return trade.amount;
+    if (key === "maker") return trade.maker || "";
+    if (key === "others") return trade.id || "";
+    return trade.amountToken;
+  }
+
+  function compareTradeSort(left, right, dir) {
+    const leftMissing = left == null || left === "";
+    const rightMissing = right == null || right === "";
+    if (leftMissing && rightMissing) return 0;
+    if (leftMissing) return 1;
+    if (rightMissing) return -1;
+    let result = 0;
+    if (typeof left === "number" && typeof right === "number") result = left - right;
+    else result = String(left).localeCompare(String(right));
+    return dir === "asc" ? result : -result;
+  }
+
   function renderTradeTable(tableId, titleText, rows, complete, onHide) {
     const root = document.documentElement;
     let table = document.getElementById(tableId);
@@ -840,7 +879,12 @@
       table.className = "twl-trades";
       root.appendChild(table);
     }
-    const headers = readTradeHeaders();
+    const headers = ["No"].concat(readTradeHeaders().filter((header) => header.toLowerCase() !== "no"));
+    const sort = tableSort.get(tableId) || { key: "date", dir: "desc" };
+    const counts = makerTradeCounts();
+    const items = rows.map((trade, index) => ({ trade, no: index + 1 }));
+    for (const item of items) item.sort = tradeSortValue(sort.key, item.trade, item.no);
+    items.sort((a, b) => compareTradeSort(a.sort, b.sort, sort.dir) || a.no - b.no);
     const previousScroll = table.querySelector(".twl-trades-scroll");
     const scrollTop = previousScroll ? previousScroll.scrollTop : 0;
     table.textContent = "";
@@ -869,24 +913,59 @@
     const headRow = document.createElement("tr");
     for (const header of headers) {
       const cell = document.createElement("th");
-      cell.textContent = header;
+      const key = header.toLowerCase();
+      cell.title = "Sort by " + header;
+      const label = document.createElement("span");
+      label.textContent = header;
+      cell.appendChild(label);
+      if (sort.key === key) {
+        const mark = document.createElement("span");
+        mark.className = "twl-sort";
+        mark.textContent = sort.dir === "asc" ? "\u25B2" : "\u25BC";
+        cell.appendChild(mark);
+      }
+      cell.addEventListener("click", () => {
+        const current = tableSort.get(tableId) || { key: "date", dir: "desc" };
+        const text = key === "type" || key === "maker" || key === "others";
+        const dir = current.key === key ? (current.dir === "asc" ? "desc" : "asc") : text ? "asc" : "desc";
+        tableSort.set(tableId, { key, dir });
+        renderPanel(lastUnlabeled, lastComplete);
+      });
       headRow.appendChild(cell);
     }
     thead.appendChild(headRow);
     const body = document.createElement("tbody");
-    for (const trade of rows) {
+    for (const item of items) {
+      const trade = item.trade;
       const row = document.createElement("tr");
       row.className = trade.type === "sell" ? "sell" : "buy";
       for (const header of headers) {
+        const name = header.toLowerCase();
         const cell = document.createElement("td");
-        if (header.toLowerCase() === "others" && trade.id) {
+        if (name === "no") {
+          cell.textContent = String(item.no);
+          cell.className = "no";
+        } else if (name === "others" && trade.id) {
           const link = document.createElement("a");
           link.href = txLink(trade.id);
           link.target = "_blank";
           link.rel = "noreferrer";
           link.textContent = "Tx";
           cell.appendChild(link);
-        } else if (header.toLowerCase() === "type") {
+        } else if (name === "maker") {
+          const wrap = document.createElement("span");
+          wrap.className = "twl-maker";
+          const address = document.createElement("span");
+          address.textContent = shortAddress(trade.maker);
+          const badge = document.createElement("span");
+          const makerCount = counts.get(trade.maker) || 1;
+          badge.className = "twl-maker-count";
+          badge.textContent = String(makerCount);
+          badge.title = makerCount + (makerCount === 1 ? " trade" : " trades") + " by this maker";
+          wrap.append(address, badge);
+          cell.appendChild(wrap);
+          cell.className = "maker";
+        } else if (name === "type") {
           cell.textContent = tradeCell(header, trade);
           cell.className = "type";
         } else {

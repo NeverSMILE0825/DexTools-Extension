@@ -148,6 +148,22 @@ span.only-address.twl-labeled {
   font-weight: 700;
   text-align: left;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.twl-trades th:hover {
+  color: #e7f2ec;
+}
+
+.twl-trades th .twl-sort {
+  margin-left: 4px;
+  color: #2ee6a6;
+}
+
+.twl-trades td.no {
+  color: #8b978f;
+  text-align: right;
 }
 
 .twl-trades td {
@@ -168,6 +184,29 @@ span.only-address.twl-labeled {
 .twl-trades a {
   color: #8ecfff;
   text-decoration: none;
+}
+
+.twl-maker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.twl-maker-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid #24302b;
+  border-radius: 8px;
+  background: #020617;
+  color: #d4d4d4;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .twl-trades-more {
