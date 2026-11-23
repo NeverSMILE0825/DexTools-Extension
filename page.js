@@ -6,6 +6,7 @@
   const TX = /^0x[a-fA-F0-9]{64}$/;
   const txToMaker = new Map();
   const trades = new Map();
+  const liquidityTimes = new Set();
   let addressToLabel = new Map();
   let tailIndex = new Map();
   let labelOrder = [];
@@ -13,6 +14,8 @@
   let showBot = true;
   let showTable = false;
   let showBotTable = false;
+  let removeInitial = false;
+  let showBotRows = true;
   const tableSort = new Map();
   let showRanks = true;
   let lastUnlabeled = {};
@@ -105,6 +108,33 @@
     trades.set(key, next);
     if (!prev) notifyUnlabeled(next);
     return true;
+  }
+
+  function rememberLiquidity(item) {
+    if (item.type !== "add" && item.type !== "init") return false;
+    let changed = false;
+    if (item.timestamp) {
+      const key = "t:" + item.timestamp;
+      if (!liquidityTimes.has(key)) {
+        liquidityTimes.add(key);
+        changed = true;
+      }
+    }
+    if (item.blockNumber != null) {
+      const key = "b:" + item.blockNumber;
+      if (!liquidityTimes.has(key)) {
+        liquidityTimes.add(key);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function isInitialBuy(trade) {
+    if (trade.type !== "buy") return false;
+    if (trade.timestamp && liquidityTimes.has("t:" + trade.timestamp)) return true;
+    if (trade.blockNumber != null && liquidityTimes.has("b:" + trade.blockNumber)) return true;
+    return false;
   }
 
   function currentPairAddress() {
@@ -219,6 +249,7 @@
     let changed = false;
     for (const item of found) {
       if (remember(item.id, item.maker)) changed = true;
+      if (item.feedPair === current && rememberLiquidity(item)) changed = true;
       if (item.feedPair === current && rememberTrade(item)) changed = true;
     }
     if (changed) {
@@ -672,6 +703,7 @@
     const totals = { eth: 0, buyEth: 0, sellEth: 0, buys: 0, sells: 0, count: 0 };
     for (const trade of trades.values()) {
       if (!trade.bot) continue;
+      if (removeInitial && isInitialBuy(trade)) continue;
       const isSell = trade.type === "sell";
       totals.eth += isSell ? -trade.amount : trade.amount;
       if (isSell) {
@@ -824,12 +856,30 @@
   function botTrades() {
     const rows = [];
     for (const trade of trades.values()) {
-      if (!trade.bot) continue;
       if (trade.type !== "buy" && trade.type !== "sell") continue;
+      if (showBotRows ? !trade.bot : trade.bot) continue;
+      if (removeInitial && isInitialBuy(trade)) continue;
       rows.push(trade);
     }
     rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || String(b.id).localeCompare(String(a.id)));
     return rows;
+  }
+
+  function botModeSwitch() {
+    const mode = document.createElement("button");
+    mode.type = "button";
+    mode.className = "twl-switch" + (showBotRows ? " on" : "");
+    mode.setAttribute("aria-pressed", showBotRows ? "true" : "false");
+    mode.textContent = showBotRows ? "Bot trades" : "Without bot";
+    mode.title = showBotRows
+      ? "Showing Bot / Smart contract trades. Turn off to show every other trade."
+      : "Showing trades without the Bot / Smart contract icon. Turn on to show bot trades.";
+    mode.addEventListener("click", () => {
+      showBotRows = !showBotRows;
+      window.postMessage({ source: "twl-page", type: "bot-rows", showBotRows }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
+    return mode;
   }
 
   function makerTradeCounts() {
@@ -870,7 +920,7 @@
     return dir === "asc" ? result : -result;
   }
 
-  function renderTradeTable(tableId, titleText, rows, complete, onHide) {
+  function renderTradeTable(tableId, titleText, rows, complete, onHide, leadingTool) {
     const root = document.documentElement;
     let table = document.getElementById(tableId);
     if (!table) {
@@ -900,6 +950,7 @@
     hideTrades.className = "twl-trades-hide";
     hideTrades.textContent = "Hide trades";
     hideTrades.addEventListener("click", onHide);
+    if (leadingTool) tools.appendChild(leadingTool);
     const count = document.createElement("div");
     count.className = "twl-trades-count";
     count.textContent = rows.length + (rows.length === 1 ? " trade" : " trades") + (complete ? "" : " · counting");
@@ -1000,11 +1051,12 @@
       if (table) table.remove();
       return;
     }
-    renderTradeTable("twl-bot-trades", "Bot / Smart contract trades", botTrades(), complete, () => {
+    const title = showBotRows ? "Bot / Smart contract trades" : "Trades without Bot / Smart contract";
+    renderTradeTable("twl-bot-trades", title, botTrades(), complete, () => {
       showBotTable = false;
       window.postMessage({ source: "twl-page", type: "show-bot-table", showBotTable: false }, "*");
       renderPanel(lastUnlabeled, lastComplete);
-    });
+    }, botModeSwitch());
   }
 
   function poolStat(label, value, tone) {
@@ -1029,7 +1081,8 @@
       if (tradesPanel) tradesPanel.remove();
       return;
     }
-    const shown = shownBot(botTotals(), complete);
+    const localBot = botTotals();
+    const shown = removeInitial ? { bot: localBot, complete } : shownBot(localBot, complete);
     const item = shown.bot;
     let panel = existing;
     if (!panel) {
@@ -1073,6 +1126,20 @@
     actions.append(toggle, hide);
     head.append(title, actions);
     panel.appendChild(head);
+    const filter = document.createElement("label");
+    filter.className = "twl-check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = removeInitial;
+    box.addEventListener("change", () => {
+      removeInitial = box.checked;
+      window.postMessage({ source: "twl-page", type: "remove-initial", removeInitial }, "*");
+      renderPanel(lastUnlabeled, lastComplete);
+    });
+    const filterText = document.createElement("span");
+    filterText.textContent = "Remove Initial Buy";
+    filter.append(box, filterText);
+    panel.appendChild(filter);
     const row = document.createElement("div");
     row.className = "twl-sum-row";
     const label = document.createElement("span");
@@ -1082,7 +1149,9 @@
     const tone = item.eth < 0 ? " neg" : item.eth > 0 ? " pos" : "";
     value.className = "twl-sum-value" + tone;
     value.textContent = formatEth(item.eth) + " ETH";
-    value.title = "Buys add Total ETH. Sells subtract Total ETH. Only trades with the Bot / Smart contract icon.";
+    value.title = removeInitial
+      ? "Buys add Total ETH. Sells subtract Total ETH. Initial buys, the buys at the same time as add or init, are excluded."
+      : "Buys add Total ETH. Sells subtract Total ETH. Only trades with the Bot / Smart contract icon.";
     row.append(label, value);
     panel.appendChild(row);
     const totals = document.createElement("div");
@@ -1100,9 +1169,8 @@
     panel.appendChild(counts);
     const note = document.createElement("div");
     note.className = "twl-sum-note";
-    note.textContent = shown.complete
-      ? "Bot / Smart contract trades. Full pair history."
-      : "Bot / Smart contract trades. Counting the full pair.";
+    note.textContent = (removeInitial ? "Initial buys removed. " : "") +
+      (shown.complete ? "Full pair history." : "Counting the full pair.");
     panel.appendChild(note);
     renderBotTrades(shown.complete);
   }
@@ -1582,6 +1650,7 @@
     if (indexedKey === key) return;
     txToMaker.clear();
     trades.clear();
+    liquidityTimes.clear();
     indexedKey = key;
     indexComplete = false;
     notifyReady = false;
@@ -1877,6 +1946,8 @@
       if (typeof data.showBot === "boolean") showBot = data.showBot;
       if (typeof data.showTable === "boolean") showTable = data.showTable;
       if (typeof data.showBotTable === "boolean") showBotTable = data.showBotTable;
+      if (typeof data.removeInitial === "boolean") removeInitial = data.removeInitial;
+      if (typeof data.showBotRows === "boolean") showBotRows = data.showBotRows;
       if (typeof data.showRanks === "boolean") {
         const turnedOn = data.showRanks && !showRanks;
         showRanks = data.showRanks;

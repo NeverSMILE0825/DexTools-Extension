@@ -119,7 +119,15 @@ function publishRanks(ranks) {
 
 function publishSettings() {
   chrome.storage.local.get(
-    { twlShowSum: false, twlShowBot: true, twlShowTable: false, twlShowBotTable: false, twlShowRanks: true },
+    {
+      twlShowSum: false,
+      twlShowBot: true,
+      twlShowTable: false,
+      twlShowBotTable: false,
+      twlShowRanks: true,
+      twlRemoveInitial: false,
+      twlBotRows: true
+    },
     (data) => {
       window.postMessage(
         {
@@ -129,7 +137,9 @@ function publishSettings() {
           showBot: data.twlShowBot !== false,
           showTable: Boolean(data.twlShowTable),
           showBotTable: Boolean(data.twlShowBotTable),
-          showRanks: Boolean(data.twlShowRanks)
+          showRanks: Boolean(data.twlShowRanks),
+          removeInitial: Boolean(data.twlRemoveInitial),
+          showBotRows: data.twlBotRows !== false
         },
         "*"
       );
@@ -223,7 +233,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (incoming && (!ranksMem || incoming.at >= ranksMem.at)) ranksMem = incoming;
     publishRanks(ranksMem);
   }
-  if (changes.twlShowSum || changes.twlShowBot || changes.twlShowTable || changes.twlShowBotTable || changes.twlShowRanks) publishSettings();
+  if (changes.twlShowSum || changes.twlShowBot || changes.twlShowTable || changes.twlShowBotTable || changes.twlShowRanks || changes.twlRemoveInitial || changes.twlBotRows) publishSettings();
   if (changes.twlQuote) {
     rememberQuote(changes.twlQuote.newValue);
     publishQuote(quoteMem);
@@ -269,6 +279,14 @@ window.addEventListener("message", (event) => {
   }
   if (data.type === "show-bot-table") {
     chrome.storage.local.set({ twlShowBotTable: Boolean(data.showBotTable) });
+    return;
+  }
+  if (data.type === "remove-initial") {
+    chrome.storage.local.set({ twlRemoveInitial: Boolean(data.removeInitial) });
+    return;
+  }
+  if (data.type === "bot-rows") {
+    chrome.storage.local.set({ twlBotRows: Boolean(data.showBotRows) });
     return;
   }
   if (data.type === "show-ranks") {
