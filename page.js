@@ -865,6 +865,33 @@
     return rows;
   }
 
+  function tradeSummary(rows) {
+    let eth = 0;
+    let buys = 0;
+    let sells = 0;
+    for (const trade of rows) {
+      if (trade.type === "sell") {
+        sells += 1;
+        eth -= trade.amount;
+      } else {
+        buys += 1;
+        eth += trade.amount;
+      }
+    }
+    eth = roundEth(eth);
+    const box = document.createElement("div");
+    box.className = "twl-trades-profit";
+    const counts = document.createElement("span");
+    counts.textContent = buys + (buys === 1 ? " buy" : " buys") + " · " + sells + (sells === 1 ? " sell" : " sells");
+    const value = document.createElement("span");
+    const tone = eth < 0 ? " neg" : eth > 0 ? " pos" : "";
+    value.className = "twl-trades-profit-value" + tone;
+    value.textContent = formatEth(eth) + " ETH";
+    value.title = "Buys add Total ETH. Sells subtract Total ETH.";
+    box.append(counts, value);
+    return box;
+  }
+
   function botModeSwitch() {
     const mode = document.createElement("button");
     mode.type = "button";
@@ -920,7 +947,7 @@
     return dir === "asc" ? result : -result;
   }
 
-  function renderTradeTable(tableId, titleText, rows, complete, onHide, leadingTool) {
+  function renderTradeTable(tableId, titleText, rows, complete, onHide, leadingTool, summary) {
     const root = document.documentElement;
     let table = document.getElementById(tableId);
     if (!table) {
@@ -955,7 +982,9 @@
     count.className = "twl-trades-count";
     count.textContent = rows.length + (rows.length === 1 ? " trade" : " trades") + (complete ? "" : " · counting");
     tools.append(hideTrades, count);
-    head.append(title, tools);
+    head.appendChild(title);
+    if (summary) head.appendChild(summary);
+    head.appendChild(tools);
     table.appendChild(head);
     const scroller = document.createElement("div");
     scroller.className = "twl-trades-scroll";
@@ -1052,11 +1081,12 @@
       return;
     }
     const title = showBotRows ? "Bot / Smart contract trades" : "Trades without Bot / Smart contract";
-    renderTradeTable("twl-bot-trades", title, botTrades(), complete, () => {
+    const rows = botTrades();
+    renderTradeTable("twl-bot-trades", title, rows, complete, () => {
       showBotTable = false;
       window.postMessage({ source: "twl-page", type: "show-bot-table", showBotTable: false }, "*");
       renderPanel(lastUnlabeled, lastComplete);
-    }, botModeSwitch());
+    }, botModeSwitch(), showBotRows ? null : tradeSummary(rows));
   }
 
   function poolStat(label, value, tone) {

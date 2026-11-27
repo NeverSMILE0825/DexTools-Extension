@@ -97,6 +97,34 @@ span.only-address.twl-labeled {
   text-transform: uppercase;
 }
 
+.twl-trades-profit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 8px;
+  color: #d7e4dd;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.twl-trades-profit-value {
+  color: #e7f2ec;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.twl-trades-profit-value.pos {
+  color: #2ee6a6;
+}
+
+.twl-trades-profit-value.neg {
+  color: #ff6b78;
+}
+
 .twl-trades-tools {
   display: flex;
   align-items: center;
